@@ -1,6 +1,8 @@
 DESIGN_NAME: auth
 VERILOG_FILES:
-- src/auth.sv
+- src/auth_init.sv
+- src/auth_generate_challenge.sv
+- src/auth_verify_id.sv
 
 USE_SLANG: true
 
