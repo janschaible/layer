@@ -25,8 +25,8 @@ Inputs:
 |-------------|---------|
 | `input logic clk` | Clock |
 | `input logic rst` | Reset |
-| `input logic consumer_ready` | Ready/Valid handshake component. |
-| `input logic consumer_valid` | Ready/Valid handshake component. |
+| `input logic external_ready` | Ready/Valid handshake component. |
+| `input logic external_valid` | Ready/Valid handshake component. |
 | `input logic [7:0] input_cipher` | The data send by the cards `AUTH_INIT`, send byte by byte. |
 
 Outputs:
@@ -34,8 +34,8 @@ Outputs:
 | Name & Type | Comment |
 |-------------|---------|
 | `output logic error` | Flag to indicate authentication failure. |
-| `output logic producer_valid` | Ready/Valid handshake component. |
-| `output logic producer_ready` | Ready/Valid handshake component. |
+| `output logic invalid_valid` | Ready/Valid handshake component. |
+| `output logic invalid_ready` | Ready/Valid handshake component. |
 | `output logic [7:0] challenge_response` | The generated challenge, send byte by byte. |
 
 ---
@@ -52,7 +52,7 @@ Inputs:
 |-------------|---------|
 | `input logic clk` | Clock |
 | `input logic rst` | Reset |
-| `input logic consumer_ready` | Ready/Valid handshake component. |
+| `input logic external_ready` | Ready/Valid handshake component. |
 | `input logic [7:0] id_cipher` | The encrypted ID of the cardy, send byte by byte. |
 
 Outputs:
@@ -61,5 +61,5 @@ Outputs:
 |-------------|---------|
 | `output logic error` | Flag to indicate authentication failure. |
 | `output logic success` | Flag to indicate authentication success. |
-| `output logic producer_valid` | Ready/Valid handshake component. |
+| `output logic internal_valid` | Ready/Valid handshake component. |
 
