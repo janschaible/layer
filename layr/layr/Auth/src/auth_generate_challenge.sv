@@ -8,13 +8,13 @@ module auth_generate_challenge(
     output logic error,
     output logic internal_ready,
     output logic internal_valid,
-    output logic [7:0] challenge_response
+    output logic [7:0] challenge_response,
 );
 
     reg [127:0] reg_input_cipher;
     reg [127:0] reg_challenge_response;
-    reg [3:0]   recv_count;
-    reg [3:0]   resp_count;
+    reg [3:0] recv_count;
+    reg [3:0] resp_count;
     reg response_ready;
 
     assign error = 1'b0;
@@ -25,16 +25,19 @@ module auth_generate_challenge(
         if (rst) begin
             reg_input_cipher <= 128'd0;
             recv_count <= 4'd0;
-        end else if (external_valid && internal_ready)
+        end else if (external_valid && internal_ready) begin
             // This automatically shifts the register value by 8 bytes.
             reg_input_cipher <= {reg_input_cipher[119:0], input_cipher};
-            recv_count <= byte_count +4'd1;
+            recv_count <= recv_count + 4'd1;
         end
     end
 
+    // TODO, maybe: When AES key cannot be permanently set during
+    // initialization, set it now.
     // TODO: decrypt reg_input_chiper (AES ECB)
     // TODO: obtain rc
-    // TODO: get random value rt
+    // TODO: get random value rt (NFC reader apparently has RNG)
+    // TODO: Send rc and rt to auth_verify_id.
     // TODO: create AES_psk(rt || rc)
     // TODO: store AES_psk(rt || rc) in reg_challenge_response
 

@@ -52,7 +52,7 @@ Inputs:
 |-------------|---------|
 | `input logic clk` | Clock |
 | `input logic rst` | Reset |
-| `input logic external_ready` | Ready/Valid handshake component. |
+| `input logic external_valid` | Ready/Valid handshake component. |
 | `input logic [7:0] id_cipher` | The encrypted ID of the cardy, send byte by byte. |
 
 Outputs:
@@ -61,5 +61,5 @@ Outputs:
 |-------------|---------|
 | `output logic error` | Flag to indicate authentication failure. |
 | `output logic success` | Flag to indicate authentication success. |
-| `output logic internal_valid` | Ready/Valid handshake component. |
+| `output logic internal_ready` | Ready/Valid handshake component. |
 
