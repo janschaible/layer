@@ -15,19 +15,62 @@ from cocotb_tools.runner import get_runner
 
 os.environ['COCOTB_ANSI_OUTPUT'] = '1'
 
+outputs = [
+    "initialize_auth",
+    "generate_challenge"
+]
+
+expected = {
+    "READY": [],
+    "INITIALIZE_AUTH": ["initialize_auth"],
+    "GENERATE_CHALLENGE": ["generate_challenge"]
+}
+
+
+class ControllerTester:
+    """Helper class for Controller module testing."""
+
+    def __init__(self, dut):
+        self.dut = dut
+
+    async def check_outputs(self, state):
+        await ReadOnly()
+        await NextTimeStep()
+        for output in outputs:
+            if output in expected[state]:
+                assert getattr(self.dut,output).value == 1, f"expected output '{output}' to be high in state {state}"
+            else:
+                print("output", output)
+                assert getattr(self.dut,output).value == 0, f"expected output '{output}' to be low in state {state}"
+
+async def reset(dut):
+    """Apply reset pulse."""
+    dut.rst.value = 1
+    await RisingEdge(dut.clk)
+    dut.rst.value = 0
+    await RisingEdge(dut.clk)
 
 @cocotb.test()
 async def test_happy_path(dut):
     """Test: verify happy path."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
-    dut.start = 1
-    await RisingEdge(dut.clk)
-    assert dut.initialize_auth == 1, "Should start by initializing the auth"
+    await reset(dut)
+    tester = ControllerTester(dut)
+    await tester.check_outputs("READY")
 
+    dut.start.value = 1
+    await RisingEdge(dut.clk)
+    await tester.check_outputs("INITIALIZE_AUTH")
+    dut.start.value = 0
+
+    dut.auth_initialized.value = 1
+    await RisingEdge(dut.clk)
+    await tester.check_outputs("GENERATE_CHALLENGE")
+    dut.auth_initialized.value = 0
 
     dut._log.info("✓ Full test passed")
 
-def test_bcd_converter_runner():
+def test_layr_controller_runner():
     sim = os.getenv("SIM", "icarus")
 
     proj_path = Path(__file__).resolve().parent.parent
@@ -41,9 +84,10 @@ def test_bcd_converter_runner():
         always=True,
         waves=True,
         timescale=("1ns", "1ps"),
+        verbose=True
     )
 
     runner.test(hdl_toplevel="layr_controller", test_module="test_layr_controller", waves=True)
 
 if __name__ == "__main__":
-    test_bcd_converter_runner()
+    test_layr_controller_runner()
