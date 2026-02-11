@@ -6,7 +6,7 @@
 
 ## Interfaces
 
-### generate_challenge
+### auth_generate_challenge
 
 This module reads the encrypted `AUTH_INIT`, decrypts it, then generates
 a challenge response and sends it to the card.
@@ -40,7 +40,7 @@ Outputs:
 
 ---
 
-### verify_id
+### auth_verify_id
 
 This module receives an ID encrypted with a session key, decrypts it and
 verifies that it is allowed to access the lock. The values rc and rt needed
@@ -63,3 +63,24 @@ Outputs:
 | `output logic success` | Flag to indicate authentication success. |
 | `output logic internal_ready` | Ready/Valid handshake component. |
 
+---
+
+### auth_init
+
+This is a small state machine that ensures the AES core is properly initialized both on first power up as well as on reset.
+
+![auth init state machine](./img/auth_init.png)
+
+Inputs:
+
+| Name & Type | Comment |
+|-------------|---------|
+| `input logic clk` | Clock |
+| `input logic rst` | Reset |
+
+Outputs:
+
+| Name & Type | Comment |
+|-------------|---------|
+| `output logic busy` | Since initialization likely takes longer then one clock cycle, this flag indicates that the init process is still ongoing. |
+| `output logic done` | Flag to indicate that init of the AES core is done. |
