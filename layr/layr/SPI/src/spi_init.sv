@@ -4,7 +4,7 @@
 // Integrates:
 //   - eeprom_spi   : simple cmd interface for EEPROM (CS0)
 //   - nfc_spi      : simple cmd interface for MFRC522 NFC (CS1)
-//   - Arbiter with grant tracking: serialises access to the shared AXI bus
+//   - Simple mux: assumes only one controller active at a time
 //   - axi_lite_master : translates simple req/resp into AXI4 transactions
 //   - axi_spi_master  : PULP register-mapped SPI master (AXI4 slave)
 //   - Clock divider init FSM: configures SPI clock after reset
@@ -14,13 +14,13 @@
 `ifndef SPI_REG_DEFINES
 `define SPI_REG_DEFINES
 `define SPI_REG_STATUS 32'h0000_0000
-`define SPI_REG_CLKDIV 32'h0000_0002
-`define SPI_REG_SPICMD 32'h0000_0004
-`define SPI_REG_SPIADR 32'h0000_0006
-`define SPI_REG_SPILEN 32'h0000_0008
-`define SPI_REG_SPIDUM 32'h0000_000A
-`define SPI_REG_TXFIFO 32'h0000_0010
-`define SPI_REG_RXFIFO 32'h0000_0020
+`define SPI_REG_CLKDIV 32'h0000_0004
+`define SPI_REG_SPICMD 32'h0000_0008
+`define SPI_REG_SPIADR 32'h0000_000C
+`define SPI_REG_SPILEN 32'h0000_0010
+`define SPI_REG_SPIDUM 32'h0000_0014
+`define SPI_REG_TXFIFO 32'h0000_0020
+`define SPI_REG_RXFIFO 32'h0000_0040
 `endif
 
 module spi_top #(
@@ -73,23 +73,19 @@ module spi_top #(
     // Internal wires
     // ================================================================
 
-    // EEPROM controller ↔ arbiter
+    // EEPROM controller ↔ mux
     wire [31:0] eeprom_axi_req_addr;
     wire [31:0] eeprom_axi_req_wdata;
     wire        eeprom_axi_req_write;
     wire        eeprom_axi_req_valid;
-    wire        eeprom_axi_resp_done;   // per-controller done
-    wire        eeprom_axi_busy;        // per-controller busy
 
-    // NFC controller ↔ arbiter
+    // NFC controller ↔ mux
     wire [31:0] nfc_axi_req_addr;
     wire [31:0] nfc_axi_req_wdata;
     wire        nfc_axi_req_write;
     wire        nfc_axi_req_valid;
-    wire        nfc_axi_resp_done;      // per-controller done
-    wire        nfc_axi_busy;           // per-controller busy
 
-    // Init FSM ↔ arbiter
+    // Init FSM ↔ mux
     reg  [31:0] init_axi_req_addr;
     reg  [31:0] init_axi_req_wdata;
     reg         init_axi_req_write;
@@ -98,20 +94,14 @@ module spi_top #(
     wire        init_axi_busy;
 
     // Arbiter ↔ axi_lite_master
-    reg  [31:0] arb_req_addr;
-    reg  [31:0] arb_req_wdata;
-    reg         arb_req_write;
-    reg         arb_req_valid;
+    wire [31:0] arb_req_addr;
+    wire [31:0] arb_req_wdata;
+    wire        arb_req_write;
+    wire        arb_req_valid;
     wire [31:0] arb_resp_rdata;
     wire        arb_resp_done;
     wire        arb_resp_error;
     wire        arb_busy;
-
-    // Grant tracking: who owns the current AXI transaction?
-    // 0 = init, 1 = eeprom, 2 = nfc
-    reg [1:0] grant;
-    reg [1:0] grant_locked;
-    reg       grant_active;  // A transaction is in-flight
 
     // axi_lite_master ↔ axi_spi_master (AXI4 bus)
     wire [AXI4_ADDRESS_WIDTH-1:0] axi_awaddr;
@@ -180,7 +170,7 @@ module spi_top #(
                 end
 
                 INIT_WRITE: begin
-                    if (!arb_busy) begin
+                    if (!init_axi_busy) begin
                         init_axi_req_addr  <= `SPI_REG_CLKDIV;
                         init_axi_req_wdata <= {24'h0, SPI_CLK_DIV};
                         init_axi_req_write <= 1'b1;
@@ -221,8 +211,8 @@ module spi_top #(
         .axi_req_write  (eeprom_axi_req_write),
         .axi_req_valid  (eeprom_axi_req_valid),
         .axi_resp_rdata (arb_resp_rdata),
-        .axi_resp_done  (eeprom_axi_resp_done),
-        .axi_busy       (eeprom_axi_busy)
+        .axi_resp_done  (arb_resp_done),
+        .axi_busy       (arb_busy)
     );
 
     // ================================================================
@@ -243,78 +233,36 @@ module spi_top #(
         .axi_req_write  (nfc_axi_req_write),
         .axi_req_valid  (nfc_axi_req_valid),
         .axi_resp_rdata (arb_resp_rdata),
-        .axi_resp_done  (nfc_axi_resp_done),
-        .axi_busy       (nfc_axi_busy)
+        .axi_resp_done  (arb_resp_done),
+        .axi_busy       (arb_busy)
     );
 
     // ================================================================
-    // Arbiter with grant tracking
+    // Simple mux — no arbiter, no grant tracking
     // ================================================================
-    // When a request is accepted (valid & !busy), we lock the grant
-    // until arb_resp_done. This ensures the response is routed back
-    // to the correct requester only.
-    //
-    // Priority: init > eeprom > nfc (init only runs once at startup)
+    // Assumption: only one controller is active at a time.
+    // init runs first (others gated by init_done).
+    // After init, the user must not issue eeprom and nfc commands
+    // simultaneously.  We just OR the request signals together.
 
-    // Route resp_done and busy only to the granted controller
-    assign init_axi_resp_done   = arb_resp_done & grant_active & (grant_locked == 2'd0);
-    assign eeprom_axi_resp_done = arb_resp_done & grant_active & (grant_locked == 2'd1);
-    assign nfc_axi_resp_done    = arb_resp_done & grant_active & (grant_locked == 2'd2);
+    assign arb_req_addr  = init_axi_req_valid ? init_axi_req_addr  :
+                           eeprom_axi_req_valid ? eeprom_axi_req_addr :
+                           nfc_axi_req_addr;
 
-    // A controller sees "busy" if the bus is busy OR another controller owns it
-    assign init_axi_busy   = arb_busy | (grant_active & (grant_locked != 2'd0));
-    assign eeprom_axi_busy = arb_busy | (grant_active & (grant_locked != 2'd1));
-    assign nfc_axi_busy    = arb_busy | (grant_active & (grant_locked != 2'd2));
+    assign arb_req_wdata = init_axi_req_valid ? init_axi_req_wdata :
+                           eeprom_axi_req_valid ? eeprom_axi_req_wdata :
+                           nfc_axi_req_wdata;
 
-    // Determine which requester to grant (combinational)
-    always @(*) begin
-        arb_req_addr  = 32'h0;
-        arb_req_wdata = 32'h0;
-        arb_req_write = 1'b0;
-        arb_req_valid = 1'b0;
-        grant         = 2'd0;
+    assign arb_req_write = init_axi_req_valid ? init_axi_req_write :
+                           eeprom_axi_req_valid ? eeprom_axi_req_write :
+                           nfc_axi_req_write;
 
-        if (!grant_active || arb_resp_done) begin
-            // Bus is free (or freeing this cycle), accept a new request
-            if (init_axi_req_valid && !init_done) begin
-                arb_req_addr  = init_axi_req_addr;
-                arb_req_wdata = init_axi_req_wdata;
-                arb_req_write = init_axi_req_write;
-                arb_req_valid = 1'b1;
-                grant         = 2'd0;
-            end else if (eeprom_axi_req_valid) begin
-                arb_req_addr  = eeprom_axi_req_addr;
-                arb_req_wdata = eeprom_axi_req_wdata;
-                arb_req_write = eeprom_axi_req_write;
-                arb_req_valid = 1'b1;
-                grant         = 2'd1;
-            end else if (nfc_axi_req_valid) begin
-                arb_req_addr  = nfc_axi_req_addr;
-                arb_req_wdata = nfc_axi_req_wdata;
-                arb_req_write = nfc_axi_req_write;
-                arb_req_valid = 1'b1;
-                grant         = 2'd2;
-            end
-        end
-    end
+    assign arb_req_valid = init_axi_req_valid | eeprom_axi_req_valid | nfc_axi_req_valid;
 
-    // Lock the grant while a transaction is in-flight
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            grant_locked <= 2'd0;
-            grant_active <= 1'b0;
-        end else begin
-            if (arb_resp_done) begin
-                // Transaction complete — release lock
-                grant_active <= 1'b0;
-            end
-            if (arb_req_valid && !arb_busy) begin
-                // New request accepted — lock grant
-                grant_locked <= grant;
-                grant_active <= 1'b1;
-            end
-        end
-    end
+    // resp_done and busy go to everyone — each controller's FSM
+    // only acts on resp_done when it has an outstanding request.
+    assign init_axi_resp_done = arb_resp_done;
+    assign init_axi_busy      = arb_busy;
 
     // ================================================================
     // AXI Lite Master (simple req/resp → AXI4)

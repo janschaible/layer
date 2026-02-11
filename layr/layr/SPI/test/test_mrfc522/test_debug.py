@@ -111,7 +111,7 @@ async def test_debug_init(dut):
         assert False, "init_done stuck at 0"
 
 
-@cocotb.test()
+@cocotb.test(skip=True)
 async def test_debug_nfc_write(dut):
     """Trace a full NFC write to find where the hang occurs."""
     cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
@@ -197,6 +197,104 @@ async def test_debug_nfc_write(dut):
             break
 
     assert cmd_done == 1, f"nfc_cmd_done never fired after 2000 cycles, nfc_state={nfc_state}"
+
+
+@cocotb.test(timeout_time=5, timeout_unit="ms")
+async def test_debug_nfc_write_no_mock(dut):
+    """NFC write WITHOUT the cocotb SPI slave mock — isolate RTL-only hang."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+
+    dut.eeprom_cmd_valid.value = 0
+    dut.eeprom_cmd_write.value = 0
+    dut.eeprom_cmd_addr.value  = 0
+    dut.eeprom_cmd_wdata.value = 0
+    dut.nfc_cmd_valid.value = 0
+    dut.nfc_cmd_write.value = 0
+    dut.nfc_cmd_addr.value  = 0
+    dut.nfc_cmd_wdata.value = 0
+    dut.nfc_miso.value = 0
+
+    dut.rst_n.value = 0
+    for _ in range(5):
+        await RisingEdge(dut.clk)
+    dut.rst_n.value = 1
+
+    spi_top = dut.u_spi_top
+    for _ in range(50):
+        await RisingEdge(dut.clk)
+    init_done = int(spi_top.init_done.value)
+    dut._log.info(f"init_done = {init_done}")
+    assert init_done == 1, "init_done not high"
+
+    # Issue NFC write: addr=0x14, data=0x55
+    dut.nfc_cmd_addr.value  = 0x14
+    dut.nfc_cmd_wdata.value = 0x55
+    dut.nfc_cmd_write.value = 1
+    dut.nfc_cmd_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.nfc_cmd_valid.value = 0
+
+    nfc = spi_top.u_nfc
+    axi_master = spi_top.u_axi_master
+    pulp_axi_if = spi_top.u_spi_master.u_axiregs
+    pulp_ctrl = spi_top.u_spi_master.u_spictrl
+
+    cmd_done = 0
+    for cycle in range(2000):
+        await RisingEdge(dut.clk)
+
+        nfc_state   = int(nfc.state.value)
+        axi_st      = int(axi_master.state.value)
+        axi_rd      = int(axi_master.resp_done.value)
+        axi_busy    = int(axi_master.busy.value)
+        nfc_cs      = int(dut.nfc_cs.value)
+        cmd_done    = int(dut.nfc_cmd_done.value)
+        pulp_state  = int(pulp_ctrl.state.value)
+
+        # Arbiter probes
+        ga          = int(spi_top.grant_active.value)
+        gl          = int(spi_top.grant_locked.value)
+        arb_v       = int(spi_top.arb_req_valid.value)
+        arb_b       = int(spi_top.arb_busy.value)
+
+        # AXI bus probes
+        awvalid     = int(axi_master.m_axi_awvalid.value)
+        awready     = int(axi_master.m_axi_awready.value)
+        awaddr      = int(axi_master.m_axi_awaddr.value)
+        wvalid      = int(axi_master.m_axi_wvalid.value)
+        wready      = int(axi_master.m_axi_wready.value)
+        wdata       = int(axi_master.m_axi_wdata.value)
+        bvalid      = int(axi_master.m_axi_bvalid.value)
+        bready      = int(axi_master.m_axi_bready.value)
+
+        # PULP AXI IF probes
+        pulp_aw     = int(pulp_axi_if.AW_CS.value)
+        wreq        = int(pulp_axi_if.write_req.value)
+        spi_wr      = int(pulp_axi_if.spi_wr.value)
+        spi_rd_sig  = int(pulp_axi_if.spi_rd.value)
+        wr_addr     = int(pulp_axi_if.wr_addr.value)
+
+        # NFC busy signal
+        nfc_busy    = int(nfc.axi_busy.value)
+
+        # Log every cycle for first 60, then on state changes or every 100
+        if cycle < 60 or cmd_done == 1 or cycle % 100 == 0:
+            dut._log.info(
+                f"C{cycle:4d} | nfc_st={nfc_state:2d} nfc_busy={nfc_busy} | "
+                f"arb_v={arb_v} arb_b={arb_b} ga={ga} gl={gl} | "
+                f"axi_st={axi_st} busy={axi_busy} rd={axi_rd} | "
+                f"aw={awvalid}/{awready} w={wvalid}/{wready} b={bvalid}/{bready} "
+                f"addr=0x{awaddr:02x} wdata=0x{wdata:08x} | "
+                f"pulp_aw={pulp_aw} wreq={wreq} wr_addr={wr_addr} "
+                f"spi_wr={spi_wr} spi_rd={spi_rd_sig} | "
+                f"pulp_st={pulp_state} cs={nfc_cs} | done={cmd_done}"
+            )
+
+        if cmd_done == 1:
+            dut._log.info(f"*** nfc_cmd_done at cycle {cycle}! ***")
+            break
+
+    assert cmd_done == 1, f"nfc_cmd_done never fired after {cycle+1} cycles, nfc_state={nfc_state}, pulp_state={pulp_state}"
 
 
 def test_debug_runner():

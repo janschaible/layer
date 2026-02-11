@@ -6,7 +6,7 @@ from collections import deque
 from typing import Deque, List, Optional, Sequence
 
 import cocotb
-from cocotb.triggers import First, Timer
+from cocotb.triggers import First, Timer, FallingEdge, RisingEdge
 
 # Add the cocotbext-spi submodule to the Python path
 _spi_ext_path = str(Path(__file__).resolve().parent.parent / "cocotbext-spi")
@@ -14,6 +14,7 @@ if _spi_ext_path not in sys.path:
     sys.path.insert(0, _spi_ext_path)
 
 from cocotbext.spi import SpiSlaveBase, SpiConfig, SpiBus
+from cocotbext.spi.exceptions import SpiFrameError
 
 
 spi_config = SpiConfig(
@@ -364,6 +365,41 @@ class Mfrc522SpiSlave(SpiSlaveBase):
     # -------------------------
     # SPI transaction handling
     # -------------------------
+
+    async def _run(self):
+        """Override SpiSlaveBase._run() to create fresh triggers each iteration.
+
+        The upstream cocotbext-spi library creates triggers once and reuses them,
+        which worked in cocotb 1.x but breaks in cocotb 2.x where triggers are
+        single-use.  We fix this here without patching the library.
+        """
+        while True:
+            # Fresh triggers every iteration
+            if self._config.cs_active_low:
+                frame_start = FallingEdge(self._cs)
+                frame_end = RisingEdge(self._cs)
+            else:
+                frame_start = RisingEdge(self._cs)
+                frame_end = FallingEdge(self._cs)
+            frame_spacing = Timer(self._config.frame_spacing_ns, unit='ns')
+
+            self.idle.set()
+            result = await First(frame_start, frame_spacing)
+            if result is frame_start:
+                raise SpiFrameError(
+                    f"There must be at least {self._config.frame_spacing_ns} ns between frames"
+                )
+
+            # Create fresh triggers for the transaction itself
+            if self._config.cs_active_low:
+                frame_start = FallingEdge(self._cs)
+                frame_end = RisingEdge(self._cs)
+            else:
+                frame_start = RisingEdge(self._cs)
+                frame_end = FallingEdge(self._cs)
+
+            await self._transaction(frame_start, frame_end)
+
     @staticmethod
     def _decode_addr_byte(addr_byte: int):
         """Decode MFRC522 SPI address byte.
