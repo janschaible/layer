@@ -1,4 +1,4 @@
-// eeprom_ctrl.sv
+// eeprom_spi.sv
 // Controller for SPI EEPROM (e.g. 25LC/AT25) via the PULP axi_spi_master.
 
 `ifndef SPI_REG_DEFINES
