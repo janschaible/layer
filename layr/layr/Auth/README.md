@@ -3,6 +3,7 @@
 - [Interfaces](#Interfaces)
     - [generate_challenge](#generate_challenge)
     - [verify_id](#verify_id)
+    - [auth_init](#auth_init)
 
 ## Interfaces
 
