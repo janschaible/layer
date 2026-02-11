@@ -1,5 +1,9 @@
 # Auth Controller
 
+- [Interfaces](#Interfaces)
+    - [generate_challenge](#generate_challenge)
+    - [verify_id](#verify_id)
+
 ## Interfaces
 
 ### generate_challenge
@@ -33,6 +37,8 @@ Outputs:
 | `output logic producer_valid` | Ready/Valid handshake component. |
 | `output logic producer_ready` | Ready/Valid handshake component. |
 | `output logic [7:0] challenge_response` | The generated challenge, send byte by byte. |
+
+---
 
 ### verify_id
 
