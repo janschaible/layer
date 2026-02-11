@@ -17,97 +17,108 @@ import random
 os.environ["COCOTB_ANSI_OUTPUT"] = "1"
 
 
-class SevenSegmentTester:
-    """Helper class for seven segment testing."""
+class AuthInitTester:
+    """Helper class for auth_init testing."""
 
     def __init__(self, dut):
         self.dut = dut
+
+        # Inputs
         self.clk = dut.clk
-        self.digit = dut.digit
-        self.update = dut.update
-        self.seg = dut.seg
+        self.rst = dut.rst
+        self.busy = dut.busy
+        self.done = dut.done
 
-    async def set_digit(self, value: int, update: bool):
-        """Set operand input value."""
-        await FallingEdge(self.clk)
-        self.digit.value = value
-        self.update.value = update
+        # Outputs
+        self.cs = dut.cs
+        self.we = dut.we
+        self.aes_address = dut.aes_address
+        self.write_data = dut.write_data
 
-    async def check_segment(self, expected_value: int):
-        """Check the segment output value."""
-        await RisingEdge(self.clk)
-        display = {
-            0: LogicArray("1111110", 7),
-            1: LogicArray("0110000", 7),
-            2: LogicArray("1101101", 7),
-            3: LogicArray("1111001", 7),
-            4: LogicArray("0110011", 7),
-            5: LogicArray("1011011", 7),
-            6: LogicArray("1011111", 7),
-            7: LogicArray("1110000", 7),
-            8: LogicArray("1111111", 7),
-            9: LogicArray("1111011", 7),
-        }
-        assert (
-            self.seg.value == display[expected_value]
-        ), f"Expected segment {display[expected_value]}, got {self.seg.value}"
+
+class AuthGenerateChallengeTester:
+    """Helper class for auth_generate_challenge testing."""
+
+    def __init__(self, dut):
+        self.dut = dut
+
+        # Inputs
+        self.clk = dut.clk
+        self.rst = dut.rst
+        self.external_ready = dut.external_ready
+        self.external_valid = dut.external_valid
+        self.input_cipher = dut.input_cipher
+
+        # Outputs
+        self.error = dut.error
+        self.internal_ready = dut.internal_ready
+        self.internal_valid = dut.internal_valid
+        self.challenge_response = dut.challenge_response
+
+
+class AuthVerifyIdTester:
+    """Helper class for auth_verify_id testing."""
+
+    def __init__(self, dut):
+        self.dut = dut
+
+        # Inputs
+        self.clk = dut.clk
+        self.rst = dut.rst
+        self.external_valid = dut.external_valid
+        self.id_cipher = dut.id_cipher
+        self.rc = dut.rc
+        self.rt = dut.rt
+
+        # Outputs
+        self.error = dut.error
+        self.success = dut.success
+        self.internal_ready = dut.internal_ready
 
 
 @cocotb.test()
-async def test_basic_operation(dut):
+async def test_auth_init(dut):
     """Test: Check the basic functionality"""
-    tester = SevenSegmentTester(dut)
-
-    clock = Clock(dut.clk, 10, unit="us")
-    cocotb.start_soon(clock.start())
-
-    await tester.set_digit(5, update=True)
-    await RisingEdge(tester.clk)
-
-    await tester.check_segment(5)
-    await RisingEdge(tester.clk)
-    await tester.check_segment(5)
-
-    dut._log.info("✓ Basic test passed")
+    tester = AuthInitTester(dut)
+    dut._log.info("✓ No tests implemented.")
 
 
-@cocotb.test()
-async def test_all(dut):
+async def test_auth_generate_challenge(dut):
     """Test: Check the basic functionality"""
-    tester = SevenSegmentTester(dut)
-
-    clock = Clock(dut.clk, 10, unit="us")
-    cocotb.start_soon(clock.start())
-
-    for i in range(10):
-        dut._log.info(f"Testing digit {i}")
-        await tester.set_digit(i, update=True)
-        await RisingEdge(tester.clk)
-        await tester.check_segment(i)
-
-    dut._log.info("✓ Full test passed")
+    tester = AuthGenerateChallengeTester(dut)
+    dut._log.info("✓ No tests implemented.")
 
 
-def test_seven_segment_runner():
+async def test_auth_verify_id(dut):
+    """Test: Check the basic functionality"""
+    tester = AuthVerifyIdTester(dut)
+    dut._log.info("✓ No tests implemented.")
+
+
+def test_auth():
     sim = os.getenv("SIM", "icarus")
 
     proj_path = Path(__file__).resolve().parent.parent
 
-    sources = [proj_path / "src" / "seven_segment.sv"]
+    sources = [
+        proj_path / "src" / "auth_init.sv",
+        proj_path / "src" / "auth_generate_challenge.sv",
+        proj_path / "src" / "auth_verify_id.sv",
+    ]
 
     runner = get_runner(sim)
     runner.build(
         sources=sources,
-        hdl_toplevel="seven_segment",
+        hdl_toplevel="auth",
         always=True,
         waves=True,
         timescale=("1ns", "1ps"),
     )
 
     runner.test(
-        hdl_toplevel="seven_segment", test_module="test_seven_segment", waves=True
+        hdl_toplevel="auth", test_module="auth", waves=True
     )
 
 
 if __name__ == "__main__":
-    test_seven_segment_runner()
+    test_auth()
