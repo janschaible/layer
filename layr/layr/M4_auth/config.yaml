@@ -1,6 +1,6 @@
-DESIGN_NAME: seven_segment
+DESIGN_NAME: auth
 VERILOG_FILES:
-- src/seven_segment.sv
+- src/auth.sv
 
 USE_SLANG: true
 
