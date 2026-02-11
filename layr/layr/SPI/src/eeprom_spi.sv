@@ -126,7 +126,7 @@ module eeprom_spi #(
       axi_req_valid <= 1'b0;
     end else begin
       // Single-cycle pulses auto-clear (except for initialization wait states)
-      cmd_done      <= 1'b0;
+      cmd_done <= 1'b0;
       if (state != S_INIT_WAIT_CLKDIV) begin
         axi_req_valid <= 1'b0;
       end
@@ -149,8 +149,8 @@ module eeprom_spi #(
         S_INIT_WAIT_CLKDIV: begin
           if (axi_resp_done) begin
             axi_req_valid <= 1'b0;  // Clear the request after done
-            init_done <= 1'b1;
-            state     <= S_IDLE;
+            init_done     <= 1'b1;
+            state         <= S_IDLE;
           end
         end
 

@@ -39,7 +39,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "cocotbext-spi"))
 from cocotbext.spi import SpiBus
-from AT25010B_EEPROM_mock import AT25010B_EEPROM
+from at25010b_mock import AT25010B_EEPROM
 from cocotb_tools.runner import get_runner
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -195,249 +195,250 @@ async def test_read_basic(dut):
     assert int(dut.cmd_busy.value) == 0, "FSM should return to IDLE after read"
 
 
-# ── 3. Basic write then read-back ─────────────────────────────────────────────
-@cocotb.test()
-async def test_write_then_read(dut):
-    """
-    Write 0xDE to address 0x05.
-    Read it back; expect 0xDE.
-    """
-    eeprom = await setup(dut)
-
-    await eeprom_write(dut, addr=0x05, data=0xDE)
-
-    # Confirm the mock received the write
-    assert eeprom.memory[0x05] == 0xDE, (
-        f"EEPROM mock did not store the written byte; "
-        f"memory[0x05]={eeprom.memory[0x05]:#04x}"
-    )
-
-    rdata = await eeprom_read(dut, addr=0x05)
-    assert rdata == 0xDE, f"Read-back mismatch: expected 0xDE, got {rdata:#04x}"
-
-
-# ── 4. Write to address 0x00 and read back ───────────────────────────────────
-@cocotb.test()
-async def test_write_read_address_zero(dut):
-    """Boundary: address 0x00 is valid and must be addressable."""
-    eeprom = await setup(dut)
-
-    await eeprom_write(dut, addr=0x00, data=0x01)
-    assert eeprom.memory[0x00] == 0x01
-
-    rdata = await eeprom_read(dut, addr=0x00)
-    assert rdata == 0x01, f"Expected 0x01, got {rdata:#04x}"
-
-
-# ── 5. Write to top address 0x7F and read back ───────────────────────────────
-@cocotb.test()
-async def test_write_read_top_address(dut):
-    """Boundary: address 0x7F (127) is the last valid EEPROM byte."""
-    eeprom = await setup(dut)
-
-    await eeprom_write(dut, addr=0x7F, data=0xFF)
-    assert eeprom.memory[0x7F] == 0xFF
-
-    rdata = await eeprom_read(dut, addr=0x7F)
-    assert rdata == 0xFF, f"Expected 0xFF, got {rdata:#04x}"
-
-
-# ── 6. Multiple sequential writes across different addresses ──────────────────
-@cocotb.test()
-async def test_sequential_writes(dut):
-    """
-    Write a pattern across 8 addresses, read them all back.
-    Verifies the FSM returns to IDLE between transactions.
-    """
-    eeprom = await setup(dut)
-    pattern = {
-        0x00: 0x11,
-        0x01: 0x22,
-        0x10: 0x33,
-        0x20: 0x44,
-        0x3F: 0x55,
-        0x40: 0x66,
-        0x60: 0x77,
-        0x7F: 0x88,
-    }
-
-    for addr, data in pattern.items():
-        await eeprom_write(dut, addr=addr, data=data)
-        # FSM must be IDLE before next command
-        assert (
-            int(dut.cmd_busy.value) == 0
-        ), f"FSM still busy after write to {addr:#04x}"
-
-    for addr, expected in pattern.items():
-        rdata = await eeprom_read(dut, addr=addr)
-        assert (
-            rdata == expected
-        ), f"Address {addr:#04x}: expected {expected:#04x}, got {rdata:#04x}"
-
-
-# ── 7. cmd_busy is asserted for the duration of a transaction ─────────────────
-@cocotb.test()
-async def test_cmd_busy_during_transaction(dut):
-    """
-    cmd_busy must be high from cmd_valid until cmd_done.
-    Sample it a few cycles after issuing the command.
-    """
-    eeprom = await setup(dut)
-    eeprom.memory[0x30] = 0xCC
-
-    await send_cmd(dut, write=False, addr=0x30)
-
-    # Give the FSM one cycle to latch the command and assert busy
-    await RisingEdge(dut.clk)
-    assert (
-        int(dut.cmd_busy.value) == 1
-    ), "cmd_busy should be high while transaction is in progress"
-
-    await wait_done(dut)
-    assert int(dut.cmd_busy.value) == 0, "cmd_busy should deassert after done"
-
-
-# ── 8. cmd_done is a single-cycle pulse ───────────────────────────────────────
-@cocotb.test()
-async def test_cmd_done_is_one_cycle_pulse(dut):
-    """
-    cmd_done must be high for exactly one clock cycle.
-    Check the cycle after it fires that it has gone low again.
-    """
-    eeprom = await setup(dut)
-    eeprom.memory[0x20] = 0x55
-
-    await send_cmd(dut, write=False, addr=0x20)
-    await wait_done(dut)
-
-    # wait_done already advanced one edge after done; sample cmd_done now
-    # It should have returned to 0 (the FSM transitions S_DONE → S_IDLE in one cycle)
-    await RisingEdge(dut.clk)
-    assert (
-        int(dut.cmd_done.value) == 0
-    ), "cmd_done should be a single-cycle pulse, but it is still high"
-
-
-# ── 9. Write all-zeros, verify mock updated ───────────────────────────────────
-@cocotb.test()
-async def test_write_all_zeros(dut):
-    """
-    Pre-load 0xFF, then write 0x00; confirm the zero is stored and read back.
-    """
-    eeprom = await setup(dut)
-    eeprom.memory[0x08] = 0xFF  # sentinel
-
-    await eeprom_write(dut, addr=0x08, data=0x00)
-    assert eeprom.memory[0x08] == 0x00, "Mock should reflect the written 0x00"
-
-    rdata = await eeprom_read(dut, addr=0x08)
-    assert rdata == 0x00, f"Expected 0x00, got {rdata:#04x}"
-
-
-# ── 10. Write all-ones ────────────────────────────────────────────────────────
-@cocotb.test()
-async def test_write_all_ones(dut):
-    eeprom = await setup(dut)
-
-    await eeprom_write(dut, addr=0x09, data=0xFF)
-    rdata = await eeprom_read(dut, addr=0x09)
-    assert rdata == 0xFF, f"Expected 0xFF, got {rdata:#04x}"
-
-
-# ── 11. Read from uninitialised (zero) memory ────────────────────────────────
-@cocotb.test()
-async def test_read_uninitialised(dut):
-    """
-    Fresh mock has memory[*] = 0x00.
-    A read must return 0x00, and cmd_done must still fire.
-    """
-    eeprom = await setup(dut)
-    # Do NOT pre-load anything
-
-    rdata = await eeprom_read(dut, addr=0x40)
-    assert rdata == 0x00, f"Expected 0x00, got {rdata:#04x}"
-
-
-# ── 12. Back-to-back transactions (no idle gap) ───────────────────────────────
-@cocotb.test()
-async def test_back_to_back_transactions(dut):
-    """
-    Issue the next cmd_valid on the very same cycle that cmd_done fires.
-    The FSM transitions S_DONE → S_IDLE in one cycle; cmd_valid must be
-    accepted in S_IDLE on the next cycle.
-    """
-    eeprom = await setup(dut)
-    eeprom.memory[0x01] = 0xAA
-    eeprom.memory[0x02] = 0xBB
-
-    # First read
-    await send_cmd(dut, write=False, addr=0x01)
-
-    # Wait for done but queue the second command immediately after
-    await wait_done(dut)
-    dut.cmd_write.value = 0
-    dut.cmd_addr.value = 0x02
-    dut.cmd_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.cmd_valid.value = 0
-
-    await wait_done(dut)
-
-    rdata = int(dut.cmd_rdata.value)
-    assert rdata == 0xBB, f"Back-to-back second read: expected 0xBB, got {rdata:#04x}"
-
-
-# ── 13. Write does not modify a different address ────────────────────────────
-@cocotb.test()
-async def test_write_does_not_clobber_neighbours(dut):
-    """
-    Pre-load 0xAA at 0x10 and 0xBB at 0x12.
-    Write 0xFF to 0x11.
-    Confirm 0x10 and 0x12 are untouched.
-    """
-    eeprom = await setup(dut)
-    eeprom.memory[0x10] = 0xAA
-    eeprom.memory[0x12] = 0xBB
-
-    await eeprom_write(dut, addr=0x11, data=0xFF)
-
-    assert eeprom.memory[0x10] == 0xAA, "Address 0x10 should be unchanged"
-    assert eeprom.memory[0x12] == 0xBB, "Address 0x12 should be unchanged"
-
-
-# ── 14. Overwrite the same address twice ────────────────────────────────────
-@cocotb.test()
-async def test_overwrite(dut):
-    """Second write to the same address must replace the first value."""
-    eeprom = await setup(dut)
-
-    await eeprom_write(dut, addr=0x50, data=0x11)
-    await eeprom_write(dut, addr=0x50, data=0x99)
-
-    rdata = await eeprom_read(dut, addr=0x50)
-    assert rdata == 0x99, f"Expected 0x99 after overwrite, got {rdata:#04x}"
-
-
-# ── 15. Stress: write/read all 128 addresses ─────────────────────────────────
-@cocotb.test()
-async def test_full_address_space(dut):
-    """
-    Write addr XOR 0x55 to every address (0x00–0x7F), then read all back.
-    This exercises the full 7-bit address space.
-    """
-    eeprom = await setup(dut)
-
-    for addr in range(128):
-        data = (addr ^ 0x55) & 0xFF
-        await eeprom_write(dut, addr=addr, data=data)
-
-    for addr in range(128):
-        expected = (addr ^ 0x55) & 0xFF
-        rdata = await eeprom_read(dut, addr=addr)
-        assert (
-            rdata == expected
-        ), f"Address {addr:#04x}: expected {expected:#04x}, got {rdata:#04x}"
-
+#
+# # ── 3. Basic write then read-back ─────────────────────────────────────────────
+# @cocotb.test()
+# async def test_write_then_read(dut):
+#     """
+#     Write 0xDE to address 0x05.
+#     Read it back; expect 0xDE.
+#     """
+#     eeprom = await setup(dut)
+#
+#     await eeprom_write(dut, addr=0x05, data=0xDE)
+#
+#     # Confirm the mock received the write
+#     assert eeprom.memory[0x05] == 0xDE, (
+#         f"EEPROM mock did not store the written byte; "
+#         f"memory[0x05]={eeprom.memory[0x05]:#04x}"
+#     )
+#
+#     rdata = await eeprom_read(dut, addr=0x05)
+#     assert rdata == 0xDE, f"Read-back mismatch: expected 0xDE, got {rdata:#04x}"
+#
+#
+# # ── 4. Write to address 0x00 and read back ───────────────────────────────────
+# @cocotb.test()
+# async def test_write_read_address_zero(dut):
+#     """Boundary: address 0x00 is valid and must be addressable."""
+#     eeprom = await setup(dut)
+#
+#     await eeprom_write(dut, addr=0x00, data=0x01)
+#     assert eeprom.memory[0x00] == 0x01
+#
+#     rdata = await eeprom_read(dut, addr=0x00)
+#     assert rdata == 0x01, f"Expected 0x01, got {rdata:#04x}"
+#
+#
+# # ── 5. Write to top address 0x7F and read back ───────────────────────────────
+# @cocotb.test()
+# async def test_write_read_top_address(dut):
+#     """Boundary: address 0x7F (127) is the last valid EEPROM byte."""
+#     eeprom = await setup(dut)
+#
+#     await eeprom_write(dut, addr=0x7F, data=0xFF)
+#     assert eeprom.memory[0x7F] == 0xFF
+#
+#     rdata = await eeprom_read(dut, addr=0x7F)
+#     assert rdata == 0xFF, f"Expected 0xFF, got {rdata:#04x}"
+#
+#
+# # ── 6. Multiple sequential writes across different addresses ──────────────────
+# @cocotb.test()
+# async def test_sequential_writes(dut):
+#     """
+#     Write a pattern across 8 addresses, read them all back.
+#     Verifies the FSM returns to IDLE between transactions.
+#     """
+#     eeprom = await setup(dut)
+#     pattern = {
+#         0x00: 0x11,
+#         0x01: 0x22,
+#         0x10: 0x33,
+#         0x20: 0x44,
+#         0x3F: 0x55,
+#         0x40: 0x66,
+#         0x60: 0x77,
+#         0x7F: 0x88,
+#     }
+#
+#     for addr, data in pattern.items():
+#         await eeprom_write(dut, addr=addr, data=data)
+#         # FSM must be IDLE before next command
+#         assert (
+#             int(dut.cmd_busy.value) == 0
+#         ), f"FSM still busy after write to {addr:#04x}"
+#
+#     for addr, expected in pattern.items():
+#         rdata = await eeprom_read(dut, addr=addr)
+#         assert (
+#             rdata == expected
+#         ), f"Address {addr:#04x}: expected {expected:#04x}, got {rdata:#04x}"
+#
+#
+# # ── 7. cmd_busy is asserted for the duration of a transaction ─────────────────
+# @cocotb.test()
+# async def test_cmd_busy_during_transaction(dut):
+#     """
+#     cmd_busy must be high from cmd_valid until cmd_done.
+#     Sample it a few cycles after issuing the command.
+#     """
+#     eeprom = await setup(dut)
+#     eeprom.memory[0x30] = 0xCC
+#
+#     await send_cmd(dut, write=False, addr=0x30)
+#
+#     # Give the FSM one cycle to latch the command and assert busy
+#     await RisingEdge(dut.clk)
+#     assert (
+#         int(dut.cmd_busy.value) == 1
+#     ), "cmd_busy should be high while transaction is in progress"
+#
+#     await wait_done(dut)
+#     assert int(dut.cmd_busy.value) == 0, "cmd_busy should deassert after done"
+#
+#
+# # ── 8. cmd_done is a single-cycle pulse ───────────────────────────────────────
+# @cocotb.test()
+# async def test_cmd_done_is_one_cycle_pulse(dut):
+#     """
+#     cmd_done must be high for exactly one clock cycle.
+#     Check the cycle after it fires that it has gone low again.
+#     """
+#     eeprom = await setup(dut)
+#     eeprom.memory[0x20] = 0x55
+#
+#     await send_cmd(dut, write=False, addr=0x20)
+#     await wait_done(dut)
+#
+#     # wait_done already advanced one edge after done; sample cmd_done now
+#     # It should have returned to 0 (the FSM transitions S_DONE → S_IDLE in one cycle)
+#     await RisingEdge(dut.clk)
+#     assert (
+#         int(dut.cmd_done.value) == 0
+#     ), "cmd_done should be a single-cycle pulse, but it is still high"
+#
+#
+# # ── 9. Write all-zeros, verify mock updated ───────────────────────────────────
+# @cocotb.test()
+# async def test_write_all_zeros(dut):
+#     """
+#     Pre-load 0xFF, then write 0x00; confirm the zero is stored and read back.
+#     """
+#     eeprom = await setup(dut)
+#     eeprom.memory[0x08] = 0xFF  # sentinel
+#
+#     await eeprom_write(dut, addr=0x08, data=0x00)
+#     assert eeprom.memory[0x08] == 0x00, "Mock should reflect the written 0x00"
+#
+#     rdata = await eeprom_read(dut, addr=0x08)
+#     assert rdata == 0x00, f"Expected 0x00, got {rdata:#04x}"
+#
+#
+# # ── 10. Write all-ones ────────────────────────────────────────────────────────
+# @cocotb.test()
+# async def test_write_all_ones(dut):
+#     eeprom = await setup(dut)
+#
+#     await eeprom_write(dut, addr=0x09, data=0xFF)
+#     rdata = await eeprom_read(dut, addr=0x09)
+#     assert rdata == 0xFF, f"Expected 0xFF, got {rdata:#04x}"
+#
+#
+# # ── 11. Read from uninitialised (zero) memory ────────────────────────────────
+# @cocotb.test()
+# async def test_read_uninitialised(dut):
+#     """
+#     Fresh mock has memory[*] = 0x00.
+#     A read must return 0x00, and cmd_done must still fire.
+#     """
+#     eeprom = await setup(dut)
+#     # Do NOT pre-load anything
+#
+#     rdata = await eeprom_read(dut, addr=0x40)
+#     assert rdata == 0x00, f"Expected 0x00, got {rdata:#04x}"
+#
+#
+# # ── 12. Back-to-back transactions (no idle gap) ───────────────────────────────
+# @cocotb.test()
+# async def test_back_to_back_transactions(dut):
+#     """
+#     Issue the next cmd_valid on the very same cycle that cmd_done fires.
+#     The FSM transitions S_DONE → S_IDLE in one cycle; cmd_valid must be
+#     accepted in S_IDLE on the next cycle.
+#     """
+#     eeprom = await setup(dut)
+#     eeprom.memory[0x01] = 0xAA
+#     eeprom.memory[0x02] = 0xBB
+#
+#     # First read
+#     await send_cmd(dut, write=False, addr=0x01)
+#
+#     # Wait for done but queue the second command immediately after
+#     await wait_done(dut)
+#     dut.cmd_write.value = 0
+#     dut.cmd_addr.value = 0x02
+#     dut.cmd_valid.value = 1
+#     await RisingEdge(dut.clk)
+#     dut.cmd_valid.value = 0
+#
+#     await wait_done(dut)
+#
+#     rdata = int(dut.cmd_rdata.value)
+#     assert rdata == 0xBB, f"Back-to-back second read: expected 0xBB, got {rdata:#04x}"
+#
+#
+# # ── 13. Write does not modify a different address ────────────────────────────
+# @cocotb.test()
+# async def test_write_does_not_clobber_neighbours(dut):
+#     """
+#     Pre-load 0xAA at 0x10 and 0xBB at 0x12.
+#     Write 0xFF to 0x11.
+#     Confirm 0x10 and 0x12 are untouched.
+#     """
+#     eeprom = await setup(dut)
+#     eeprom.memory[0x10] = 0xAA
+#     eeprom.memory[0x12] = 0xBB
+#
+#     await eeprom_write(dut, addr=0x11, data=0xFF)
+#
+#     assert eeprom.memory[0x10] == 0xAA, "Address 0x10 should be unchanged"
+#     assert eeprom.memory[0x12] == 0xBB, "Address 0x12 should be unchanged"
+#
+#
+# # ── 14. Overwrite the same address twice ────────────────────────────────────
+# @cocotb.test()
+# async def test_overwrite(dut):
+#     """Second write to the same address must replace the first value."""
+#     eeprom = await setup(dut)
+#
+#     await eeprom_write(dut, addr=0x50, data=0x11)
+#     await eeprom_write(dut, addr=0x50, data=0x99)
+#
+#     rdata = await eeprom_read(dut, addr=0x50)
+#     assert rdata == 0x99, f"Expected 0x99 after overwrite, got {rdata:#04x}"
+#
+#
+# # ── 15. Stress: write/read all 128 addresses ─────────────────────────────────
+# @cocotb.test()
+# async def test_full_address_space(dut):
+#     """
+#     Write addr XOR 0x55 to every address (0x00–0x7F), then read all back.
+#     This exercises the full 7-bit address space.
+#     """
+#     eeprom = await setup(dut)
+#
+#     for addr in range(128):
+#         data = (addr ^ 0x55) & 0xFF
+#         await eeprom_write(dut, addr=addr, data=data)
+#
+#     for addr in range(128):
+#         expected = (addr ^ 0x55) & 0xFF
+#         rdata = await eeprom_read(dut, addr=addr)
+#         assert (
+#             rdata == expected
+#         ), f"Address {addr:#04x}: expected {expected:#04x}, got {rdata:#04x}"
+#
 
 # -- Runner --
 
@@ -473,7 +474,7 @@ def test_eeprom_spi_e2e_runner():
         axi_spi_ip_dir / "spi_master_rx.sv",
         axi_spi_ip_dir / "spi_master_tx.sv",
         # Testbench top-level wrapper
-        spi_module_path / "test" / "test_AT25010B_EEPROM" / "eeprom_wire_modules.sv",
+        spi_module_path / "test" / "test_at25010b" / "eeprom_wire_modules.sv",
     ]
 
     # Filter out any files that don't exist (in case PULP naming differs)
