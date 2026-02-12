@@ -28,19 +28,15 @@ class AuthInitTester:
         self.rst = dut.rst
 
         # Outputs
-        self.busy_o = dut.busy_o
-        self.done_o = dut.done_o
+        self.aes_cs_o = dut.aes_cs_o
+        self.aes_we_o = dut.aes_we_o
+        self.aes_address_o = dut.aes_address_o
+        self.aes_write_data_o = dut.aes_write_data_o
 
         # Relevant internal registers
         self.current_state = dut.current_state
-        self.cs = dut.cs
-        self.we = dut.cs
-        self.aes_address = dut.aes_address
-        self.write_data = dut.write_data
         self.key_index = dut.key_index
-
-        # Relevant internal modules
-        self.aes = dut.aes
+        self.reg_key = dut.reg_key
 
 
 class AuthGenerateChallengeTester:
@@ -99,13 +95,11 @@ async def reset_dut(tester, cycles=2):
 
 
 @cocotb.test()
-async def test__auth_init__write_key_to_aes_core(dut):
+async def auth_init__write_key_to_aes_core(dut):
     """Test: Check key write to aes core"""
     tester = AuthInitTester(dut)
     await start_clock(dut)
     await reset_dut(tester)
-
-    dut._log.info(dut.reg_key)
 
     while True:
         await RisingEdge(tester.clk)
@@ -113,29 +107,34 @@ async def test__auth_init__write_key_to_aes_core(dut):
         if int(tester.current_state.value) == 1:
             break
 
-    written_addresses = []
+    written_data = []
     while True:
         await RisingEdge(tester.clk)
 
         if int(tester.current_state.value) == 0:
             break
 
-        if tester.cs.value == 1 and tester.we.value == 1:
-            written_addresses.append(tester.aes_address.value)
+        if tester.aes_cs_o.value == 1 and tester.aes_we_o.value == 1:
+            written_data.append((
+                tester.aes_address_o.value,
+                tester.aes_write_data_o.value
+            ))
 
-    assert len(written_addresses) == 4, f"Expected 8 key‑word writes, but saw {len(written_addresses)}."
+    assert len(written_data) == 4, f"Expected 8 key‑word writes, but saw {len(written_data)}."
 
-    for idx, address in enumerate(written_addresses):
+    for idx, (address, key_fragment) in enumerate(written_data):
         expected_address = 0x10 + idx
-
-        dut._log.info(address)
+        expected_key_fragment = 10 + idx
 
         assert address == expected_address, (
             f"Key word {idx}: address mismatch – got {address}, "
             f"expected {bin(expected_address)}"
         )
 
-    assert tester.aes.core_key == "x" * 8, f"Expected different key value. Current value: {tester.aes.core_key}"
+        assert key_fragment == expected_key_fragment, (
+            f"Key word {idx}: key fragment mismatch – got {key_fragment}, "
+            f"expected {bin(expected_key_fragment)}"
+        )
 
 
 def test_auth():
