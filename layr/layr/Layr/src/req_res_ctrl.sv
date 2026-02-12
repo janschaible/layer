@@ -1,37 +1,28 @@
-module layr_controller(
+module req_res_ctrl(
     input logic clk,
     input logic rst,
-    input logic auth_initialized,
-    input logic challenge_generated,
-    input logic authenticated,
-    input logic 
-
+    
     input logic start,
+    input logic sent,
+    input logic recieved_response,
 
-    output logic initialize_auth,
-    output logic generate_challenge,
-    output logic authenticate,
+    output logic 
 );
 
-enum {READY, INITIALIZE_AUTH, GENERATE_CHALLENGE, AUTHENTICATE, GetId} state, next_state;
-
+enum {READY, REQUESTING, READING_RESPONSE} state, next_state;
 
 always_comb begin
     next_state = state;
-    initialize_auth = 0;
-    generate_challenge = 0;
 
     case (state)
         READY: begin
             if(start) begin
-                next_state = INITIALIZE_AUTH;
-                initialize_auth=1;
+                next_state = REQUESTING;
             end
         end
         INITIALIZE_AUTH: begin
-            if(auth_initialized) begin
-                next_state=GENERATE_CHALLENGE;
-                generate_challenge=1;
+            if(sent) begin
+                
             end
         end
         GENERATE_CHALLENGE: begin

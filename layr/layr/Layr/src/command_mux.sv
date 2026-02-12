@@ -1,0 +1,119 @@
+module command_mux(
+    input logic clk,
+    input logic rst,
+
+    input logic auth_init,
+    input logic auth,
+    input logic get_id,
+
+    input logic [127: 0] card_challenge_rc,
+
+    input logic response_valid,
+    input logic [127: 0] response,
+
+    output logic [127: 0] id_cipher,
+    output logic [127: 0] chip_challenge,
+
+    output logic [168: 0] command // 1b cla + 1b ins + 2b instructions (always empty) + 1b lc + 16b daten
+);
+
+enum {AUTH_INIT, AUTH, GET_ID} active_transmission, next_active_transmission;
+enum {READY, SENDING, RECIEVING} state, next_state;
+
+
+logic [127:0] payload;
+logic [7:0] cla, ins;
+
+always_comb begin
+    next_state = state;
+    next_active_transmission = active_transmission;
+    case(state)
+        READY: begin
+            if(auth_init)
+                next_active_transmission = AUTH_INIT;
+            else if(auth)
+                next_active_transmission = AUTH;
+            else if(get_id)
+                next_active_transmission = GET_ID;
+            if (auth_init || auth || get_id)
+                next_state = SENDING;
+        end
+        SENDING:begin
+        end
+        RECIEVING:begin
+        end
+    endcase
+end
+
+always_comb begin
+    cla = 8'h80;
+    ins = 8'h00;
+    payload = 0;
+
+    case (next_active_transmission)
+        AUTH_INIT: begin
+            ins = 8'h10;
+        end
+        AUTH: begin
+            ins = 8'h11;
+            payload = card_challenge_rc;
+        end
+        GET_ID: begin
+            ins = 8'h12;
+        end
+    endcase
+end
+
+// updating the command
+always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+        command <= '0;
+    end else begin
+        command <= {
+            cla,
+            ins,
+            16'h00, // instructions
+            8'h10,  // payload size
+            payload
+        };
+    end
+end
+
+
+// update the state maching
+always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+        state <= READY;
+        active_transmission <= AUTH_INIT;
+    end else begin
+        state <= next_state;
+        active_transmission <= next_active_transmission;
+    end
+end
+
+/*
+// assign the response to the corresponding output
+always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+        id_cipher <= '0;
+        chip_challenge <= '0;
+    end else begin
+
+        state <= next_state;
+        active_transmission <= next_active_transmission;
+        if(response_valid) begin
+            case(active_transmission)
+                AUTH_INIT: begin
+                    chip_challenge <= response;
+                end
+                AUTH: begin
+                end
+                GET_ID: begin
+                    id_cipher <= response;
+                end
+            endcase
+        end
+    end
+end
+*/
+endmodule
