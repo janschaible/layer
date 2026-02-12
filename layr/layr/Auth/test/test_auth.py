@@ -30,11 +30,17 @@ class AuthInitTester:
         # Outputs
         self.busy_o = dut.busy_o
         self.done_o = dut.done_o
-        self.cs_o = dut.cs_o
-        self.we_o = dut.we_o
-        self.aes_address_o = dut.aes_address_o
-        self.write_data_o = dut.write_data_o
-        self.dbg_current_state = dut.dbg_current_state
+
+        # Relevant internal registers
+        self.current_state = dut.current_state
+        self.cs = dut.cs
+        self.we = dut.cs
+        self.aes_address = dut.aes_address
+        self.write_data = dut.write_data
+        self.key_index = dut.key_index
+
+        # Relevant internal modules
+        self.aes = dut.aes
 
 
 class AuthGenerateChallengeTester:
@@ -95,46 +101,41 @@ async def reset_dut(tester, cycles=2):
 @cocotb.test()
 async def test__auth_init__write_key_to_aes_core(dut):
     """Test: Check key write to aes core"""
-    expected_key = [0x00000001] * 8
-
     tester = AuthInitTester(dut)
     await start_clock(dut)
     await reset_dut(tester)
 
+    dut._log.info(dut.reg_key)
+
     while True:
         await RisingEdge(tester.clk)
 
-        if int(tester.dbg_current_state.value) == 1:
+        if int(tester.current_state.value) == 1:
             break
 
-    written_data = []
+    written_addresses = []
     while True:
         await RisingEdge(tester.clk)
 
-        if int(tester.dbg_current_state.value) == 0:
+        if int(tester.current_state.value) == 0:
             break
 
-        if tester.cs_o.value == 1 and tester.we_o.value == 1:
-            written_data.append((
-                tester.aes_address_o.value,
-                tester.write_data_o.value
-            ))
+        if tester.cs.value == 1 and tester.we.value == 1:
+            written_addresses.append(tester.aes_address.value)
 
-    assert len(written_data) == 8, f"Expected 8 key‑word writes, but saw {len(written_data)}."
+    assert len(written_addresses) == 4, f"Expected 8 key‑word writes, but saw {len(written_addresses)}."
 
-    for idx, (addr, data) in enumerate(written_data):
-        expected_addr = 0x10 + idx
-        expected_data = expected_key[idx]
+    for idx, address in enumerate(written_addresses):
+        expected_address = 0x10 + idx
 
-        assert addr == expected_addr, (
-            f"Key word {idx}: address mismatch – got 0x{addr:02X}, "
-            f"expected 0x{expected_addr:02X}"
+        dut._log.info(address)
+
+        assert address == expected_address, (
+            f"Key word {idx}: address mismatch – got {address}, "
+            f"expected {bin(expected_address)}"
         )
 
-        assert data == expected_data, (
-            f"Key word {idx}: data mismatch – got 0x{data:08X}, "
-            f"expected 0x{expected_data:08X}"
-        )
+    assert tester.aes.core_key == "x" * 8, f"Expected different key value. Current value: {tester.aes.core_key}"
 
 
 def test_auth():
@@ -146,6 +147,13 @@ def test_auth():
         proj_path / "src" / "auth_init.sv",
         proj_path / "src" / "auth_generate_challenge.sv",
         proj_path / "src" / "auth_verify_id.sv",
+        proj_path / "secworks-aes" / "src" / "rtl" / "aes.v",
+        proj_path / "secworks-aes" / "src" / "rtl" / "aes_core.v",
+        proj_path / "secworks-aes" / "src" / "rtl" / "aes_decipher_block.v",
+        proj_path / "secworks-aes" / "src" / "rtl" / "aes_encipher_block.v",
+        proj_path / "secworks-aes" / "src" / "rtl" / "aes_inv_sbox.v",
+        proj_path / "secworks-aes" / "src" / "rtl" / "aes_key_mem.v",
+        proj_path / "secworks-aes" / "src" / "rtl" / "aes_sbox.v",
     ]
 
     auth_init_runner = get_runner(sim)

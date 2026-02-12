@@ -3,6 +3,7 @@ VERILOG_FILES:
 - src/auth_init.sv
 - src/auth_generate_challenge.sv
 - src/auth_verify_id.sv
+- secworks-aes/src/rtl/aes.v
 
 USE_SLANG: true
 
