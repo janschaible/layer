@@ -1,25 +1,25 @@
 module auth_generate_challenge(
     input logic clk,
     input logic rst,
-    input logic external_ready,
-    input logic external_valid,
-    input logic [7:0] input_cipher,
+    input logic external_ready_i,
+    input logic external_valid_i,
+    input logic [7:0] input_cipher_i,
 
-    output logic error,
-    output logic internal_ready,
-    output logic internal_valid,
-    output logic [7:0] challenge_response,
+    output logic error_o,
+    output logic internal_ready_o,
+    output logic internal_valid_o,
+    output logic [7:0] challenge_response_o
 );
 
     reg [127:0] reg_input_cipher;
     reg [127:0] reg_challenge_response;
-    reg [3:0] recv_count;
-    reg [3:0] resp_count;
+    reg [5:0] recv_count;
+    reg [5:0] resp_count;
     reg response_ready;
 
     assign error = 1'b0;
     assign response_ready = 1'b0;
-    assign internal_ready = (byte_count != 4'd16);
+    assign internal_ready = (byte_count != 5'd16);
 
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -65,13 +65,13 @@ module auth_generate_challenge(
     // TODO: Placeholder value
     assign reg_challenge_response = 128'hFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF;
 
-    assign internal_valid = response_ready && (recv_count == 4'd16) && (resp_count <= 4'd16);
-    assign challenge_response = reg_challenge_response[127 - resp_cnt*8 -: 8];
+    assign internal_valid_o = response_ready && (recv_count == 5'd16) && (resp_count <= 5'd16);
+    assign challenge_response_o = reg_challenge_response[127 - resp_cnt*8 -: 8];
 
     always_ff @(posedge clk) begin
         if (rst) begin
             resp_count <= 4'd0;
-        end else if (internal_valid && external_ready) begin
+        end else if (internal_valid_o && external_ready_i) begin
             resp_count <= resp_count + 4'd1;
         end
     end
@@ -79,7 +79,7 @@ module auth_generate_challenge(
     //Reset input register and counter after challenge_response has been
     //transmitted
     always_ff @(posedge clk) begin
-        if (rst || (internal_valid && external_ready && resp_count == 4'd15)) begin
+        if (rst || (internal_valid_o && external_ready_i && resp_count == 4'd15)) begin
             reg_input_cipher <= 128'd0;
             recv_count <= 4'd0;
             resp_count <= 4'd0;

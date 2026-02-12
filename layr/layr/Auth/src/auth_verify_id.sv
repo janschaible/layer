@@ -1,22 +1,22 @@
 module auth_verify_id(
     input logic clk,
     input logic rst,
-    input logic external_valid,
-    input logic [7:0] id_cipher,
-    input logic [7:0] rc,
-    input logic [7:0] rt,
+    input logic external_valid_i,
+    input logic [7:0] id_cipher_i,
+    input logic [7:0] rc_i,
+    input logic [7:0] rt_i,
 
-    output logic error,
-    output logic success,
-    output logic internal_ready
+    output logic error_o,
+    output logic success_o,
+    output logic internal_ready_o
 );
 
     reg [127:0] reg_id_cipher;
     reg [3:0] recv_count;
 
-    assign error = 1'b0;
-    assign id_valid = 1'b0;
-    assign internal_ready = (recv_count != 4'd16);
+    assign error_o = 1'b0;
+    assign success_o = 1'b0;
+    assign internal_ready = (recv_count <= 4'd15);
 
     always_ff @(posedge clk) begin
         if (rst) begin
