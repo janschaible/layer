@@ -1,16 +1,10 @@
-"""
-Modern cocotb 2.0 testbench for the Controller module.
-Uses async/await syntax and modern pythonic patterns.
-"""
-
 import os
 from pathlib import Path
 
 import secrets
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import Timer, FallingEdge, RisingEdge, NextTimeStep, ReadOnly
-from cocotb.types import LogicArray
+from cocotb.triggers import RisingEdge
 
 
 from cocotb_tools.runner import get_runner
@@ -19,6 +13,14 @@ os.environ['COCOTB_ANSI_OUTPUT'] = '1'
 
 async def reset(dut):
     """Apply reset pulse."""
+    dut.auth_init.value = 0
+    dut.auth.value = 0
+    dut.get_id.value = 0
+
+    dut.response.value = 0
+    dut.response_valid.value = 0
+    dut.chip_challenge_rc.value = 0
+
     dut.rst.value = 1
     await RisingEdge(dut.clk)
     dut.rst.value = 0
@@ -32,7 +34,7 @@ async def test_transmission_mode_cannot_be_changed_when_running(dut):
     expected = int.from_bytes(0x08011000010.to_bytes(5, byteorder="big") + challenge, byteorder="big")
 
     dut.auth.value = 1
-    dut.card_challenge_rc.value = int.from_bytes(challenge, byteorder="big")
+    dut.chip_challenge_rc.value = int.from_bytes(challenge, byteorder="big")
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
     assert dut.state.value == 1, "Expected the fsm to be in sending state"
@@ -46,7 +48,84 @@ async def test_transmission_mode_cannot_be_changed_when_running(dut):
     assert dut.active_transmission.value == 1, "Expected active transmission to still be of type auth"
     assert dut.command.value == expected
 
-    dut._log.info("✓ Full test passed")
+@cocotb.test()
+async def test_auth_init_transmission(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset(dut)
+    dut.auth_init.value = 1
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    assert dut.state.value == 1, "Expected the fsm to be in sending state"
+    assert dut.active_transmission.value == 0, "Expected active transmission to be of type auth_init"
+    assert dut.command.value == 0x0801000001000000000000000000000000000000000
+    assert dut.command_valid.value == 1, "Expected the command to be valid"
+
+    response = int.from_bytes(secrets.token_bytes(16))
+    dut.response.value = response
+    dut.response_valid.value = 1
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    assert dut.state.value == 0, "Expected the fsm to be in ready state - as the command was completed by response from card"
+    assert dut.command_valid.value == 0, "Expected the command to be valid"
+    assert dut.card_challenge.value == response, "Expected the response to be writte into the chip challenge"
+
+@cocotb.test()
+async def test_auth_transmission(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset(dut)
+    challenge = secrets.token_bytes(16)
+    expected = int.from_bytes(0x08011000010.to_bytes(5, byteorder="big") + challenge, byteorder="big")
+
+    dut.auth.value = 1
+    dut.chip_challenge_rc.value = int.from_bytes(challenge, byteorder="big")
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    assert dut.state.value == 1, "Expected the fsm to be in sending state"
+    assert dut.active_transmission.value == 1, "Expected active transmission to be of type auth"
+    assert dut.command.value == expected, f"Expected the value to be {bin(expected)}"
+    assert dut.command_valid.value == 1, "Expected the command to be valid"
+
+    response = int.from_bytes(secrets.token_bytes(16))
+    dut.response.value = response
+    dut.response_valid.value = 1
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    assert dut.state.value == 0, "Expected the fsm to be in ready state - as the command was completed by response from card"
+    assert dut.command_valid.value == 0, "Expected the command to be valid"
+
+@cocotb.test()
+async def test_get_id_transmission(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset(dut)
+    dut.get_id.value = 1
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    assert dut.state.value == 1, "Expected the fsm to be in sending state"
+    assert dut.active_transmission.value == 2, "Expected active transmission to be of type get_id"
+    assert dut.command.value == 0x0801200001000000000000000000000000000000000
+    assert dut.command_valid.value == 1, "Expected the command to be valid"
+
+    response = int.from_bytes(secrets.token_bytes(16))
+    dut.response.value = response
+    dut.response_valid.value = 1
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    assert dut.state.value == 0, "Expected the fsm to be in ready state - as the command was completed by response from card"
+    assert dut.command_valid.value == 0, "Expected the command to be valid"
+    assert dut.id_cipher.value == response, "Expected the response to be writte into the id cipher"
+
+@cocotb.test()
+async def test_reset(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset(dut)
+    dut.get_id.value = 1
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    assert dut.state.value == 1, "Expected the fsm to be in sending state"
+    await reset(dut)
+    assert dut.state.value == 0, "Expected to be in ready state"
+    assert dut.command_valid.value == 0, "Expected command to be not valid"
+    assert dut.command.value == 0, "Expected command to be reset"
 
 def test_command_mux_runner():
     sim = os.getenv("SIM", "icarus")

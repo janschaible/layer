@@ -1,3 +1,12 @@
+
+/**
+  * This module is used to multiplex the various commands onto the command register.
+  * Once a command has been tiggered through one of the flags `auth_init` `auth` or `get_id`
+  * No new command can be triggered until the a response has been recieved for the old one.
+  *
+  * Depending on what command has been triggered, the response will be demultiplexed into
+  * `id_cipher` and `card_challenge`
+  */
 module command_mux(
     input logic clk,
     input logic rst,
@@ -6,21 +15,22 @@ module command_mux(
     input logic auth,
     input logic get_id,
 
-    input logic [127: 0] card_challenge_rc,
+    input logic [127: 0] chip_challenge_rc,
 
     input logic response_valid,
     input logic [127: 0] response,
 
     output logic [127: 0] id_cipher,
-    output logic [127: 0] chip_challenge,
+    output logic [127: 0] card_challenge,
 
-    output logic [168: 0] command // 1b cla + 1b ins + 2b instructions (always empty) + 1b lc + 16b daten
+    output logic [168: 0] command, // 1b cla + 1b ins + 2b instructions (always empty) + 1b lc + 16b daten
+    output logic command_valid
 );
 
 parameter CLA = 8'h80;
 
 enum {AUTH_INIT, AUTH, GET_ID} active_transmission, next_active_transmission;
-enum {READY, SENDING, RECIEVING} state, next_state;
+enum {READY, EXECUTING} state, next_state;
 
 
 logic [127:0] payload;
@@ -29,6 +39,7 @@ logic [7:0] cla, ins;
 always_comb begin
     next_state = state;
     next_active_transmission = active_transmission;
+    command_valid = 0;
     case(state)
         READY: begin
             if(auth_init)
@@ -37,12 +48,15 @@ always_comb begin
                 next_active_transmission = AUTH;
             else if(get_id)
                 next_active_transmission = GET_ID;
-            if (auth_init || auth || get_id)
-                next_state = SENDING;
+            if (auth_init || auth || get_id)begin
+                next_state = EXECUTING;
+            end
         end
-        SENDING:begin
-        end
-        RECIEVING:begin
+        EXECUTING:begin
+            command_valid = 1;
+            if(response_valid) begin
+                next_state = READY;
+            end
         end
     endcase
 end
@@ -57,7 +71,7 @@ always_comb begin
         end
         AUTH: begin
             ins = 8'h11;
-            payload = card_challenge_rc;
+            payload = chip_challenge_rc;
         end
         GET_ID: begin
             ins = 8'h12;
@@ -92,12 +106,11 @@ always_ff @(posedge clk or posedge rst) begin
     end
 end
 
-/*
 // assign the response to the corresponding output
 always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
         id_cipher <= '0;
-        chip_challenge <= '0;
+        card_challenge <= '0;
     end else begin
 
         state <= next_state;
@@ -105,7 +118,7 @@ always_ff @(posedge clk or posedge rst) begin
         if(response_valid) begin
             case(active_transmission)
                 AUTH_INIT: begin
-                    chip_challenge <= response;
+                    card_challenge <= response;
                 end
                 AUTH: begin
                 end
@@ -116,5 +129,4 @@ always_ff @(posedge clk or posedge rst) begin
         end
     end
 end
-*/
 endmodule

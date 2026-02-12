@@ -30,20 +30,27 @@ layr_controller controller(
     .generate_challenge(generate_challenge)
 );
 
-command_writer cmd_writer (
+command_mux mux(
     .clk(clk),
-    .rst(rst_),
+    .rst(rst),
 
-    .start(initialize_auth), // todo js this is not right...
-    .data_in({cla, ins, 8'h00, 8'h00}), // todo js this is not complete
+    .auth_init(initialize_auth),
+    .auth(auth),
+    .get_id(get_id),
 
-    .tx_ready(),
+    .card_challenge_rc(card_challenge_rc),
 
-    .tx(tx),
-    .tx_valid(tx_valid),
-    .tx_last(tx_last),
+    input logic response_valid,
+    input logic [127: 0] response,
+
+    .id_cipher(id_cipher),
+    .chip_challenge(chip_challenge_rt),
+
+    output logic [168: 0] command, // 1b cla + 1b ins + 2b instructions (always empty) + 1b lc + 16b daten
+    output logic command_valid
 )
 
+/*
 auth_verify_id auth_v(
     .clk(clk),
     .rst(rst),
@@ -65,6 +72,7 @@ auth_generate_challenge auth_g(
     .internal_valid_o(challenge_generated),
     .challenge_response_o(chip_challenge_rt_new)
 )
+*/
 
 always_ff @(posedge clk) begin
     if(challenge_generated)begin
