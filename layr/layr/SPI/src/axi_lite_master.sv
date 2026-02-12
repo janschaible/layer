@@ -258,24 +258,25 @@ module axi_lite_master #(
           end
         end
 
-        // ------------------------------------------------------------
-        // WRITE: AW/W phase
-        // ------------------------------------------------------------
         ST_W_AW_W: begin
-          if (m_axi_awvalid && m_axi_awready) begin
-            m_axi_awvalid <= 1'b0;
-            aw_done       <= 1'b1;
-          end
-          if (m_axi_wvalid && m_axi_wready) begin
-            m_axi_wvalid <= 1'b0;
-            w_done       <= 1'b1;
-          end
+            // Capture handshakes and deassert valid immediately
+            if (m_axi_awready) begin
+                aw_done       <= 1'b1;
+                m_axi_awvalid <= 1'b0;
+            end
+            if (m_axi_wready) begin
+                w_done       <= 1'b1;
+                m_axi_wvalid <= 1'b0;
+            end
 
-          if ( (aw_done || (m_axi_awvalid && m_axi_awready)) &&
-               (w_done  || (m_axi_wvalid  && m_axi_wready )) ) begin
-            m_axi_bready <= 1'b1;
-            state        <= ST_W_B;
-          end
+            // Once both channels have completed (possibly across
+            // different cycles), move to the B-response phase.
+            // Use the live ready signals so we can transition in
+            // the same cycle both fire simultaneously.
+            if ((aw_done || m_axi_awready) && (w_done || m_axi_wready)) begin
+                m_axi_bready <= 1'b1;
+                state        <= ST_W_B;
+            end
         end
 
         // ------------------------------------------------------------

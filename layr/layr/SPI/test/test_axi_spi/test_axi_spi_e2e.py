@@ -118,27 +118,14 @@ async def reset_dut(dut):
         await RisingEdge(dut.clk)
 
 
-async def wait_done(dut, timeout_us: int = TRANSACTION_TIMEOUT_US) -> None:
-    """
-    Block until cmd_done pulses high, or raise TestFailure on timeout.
-    """
-    timeout_trigger = Timer(timeout_us, "us")
-    done_trigger = RisingEdge(dut.resp_done_o)
-
-    result = await First(done_trigger, timeout_trigger)
-    if result is timeout_trigger:
-        # Gather debug info
-        try:
-            axi_busy = int(dut.busy_o)
-        except Exception:
-            axi_busy = "?"
-        raise Exception(
-            f"Timed out after {timeout_us} µs waiting for cmd_done. "
-            f"axi_busy={axi_busy}"
-        )
-    # cmd_done is a single-cycle pulse; make sure we sampled it on a rising edge
-    await RisingEdge(dut.clk)
-
+async def wait_done(dut, max_cycles=1000):
+    for _ in range(max_cycles):
+        await RisingEdge(dut.clk)
+        if int(dut.resp_done_o.value):
+            return
+        if int(dut.resp_error_o.value):
+            raise RuntimeError("AXI error")
+    raise TimeoutError("wait_done() timed out")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Common fixture: start clock + reset + attach EEPROM mock
@@ -167,14 +154,6 @@ REG_SPIADR = 0x0C  # [cite: 98]
 REG_SPILEN = 0x10  # [cite: 98]
 TX_FIFO = 0x20  # Bit 3 of address high selects TX FIFO [cite: 137, 297]
 
-REG_STATUS = 0x00  # [cite: 98]
-REG_CLKDIV = 0x02  # [cite: 98]
-REG_SPICMD = 0x04  # [cite: 98]
-REG_SPIADR = 0x06  # [cite: 98]
-REG_SPILEN = 0x08  # [cite: 98]
-TX_FIFO = 0x20  # Bit 3 of address high selects TX FIFO [cite: 137, 297]
-
-
 async def axi_write(dut, addr, data, cs=0):
     dut.req_addr_i.value = addr
     dut.req_wdata_i.value = data
@@ -183,32 +162,77 @@ async def axi_write(dut, addr, data, cs=0):
     dut.req_valid_i.value = 1
     await RisingEdge(dut.clk)
     dut.req_valid_i.value = 0
-    await wait_done(dut)
+    dut._log.info(f"axi_write(addr=0x{addr:02x}, data=0x{data:08x}) dispatched")
 
 
 async def send_byte(dut, data_byte: int):
     # 1) Set command length (0 for simple SPI)
+    dut._log.info("send_byte: writing SPICMD...")
     await axi_write(dut, REG_SPICMD, 0, cs=0)
+    await wait_done(dut)
+    dut._log.info("send_byte: SPICMD done")
 
     # 2) Set address length (0 for simple SPI)
+    dut._log.info("send_byte: writing SPIADR...")
     await axi_write(dut, REG_SPIADR, 0, cs=0)
+    await wait_done(dut)
+    dut._log.info("send_byte: SPIADR done")
 
     # 3) Set data length: 8 data bits, 0 addr, 0 cmd
+    dut._log.info("send_byte: writing SPILEN...")
     await axi_write(dut, REG_SPILEN, (8 << 16), cs=0)
-    # 4) Write TX FIFO (MSB-aligned!)
-    await axi_write(dut, TX_FIFO, (data_byte & 0xFF) << 24, cs=0)
-    # 5) Trigger transfer: STATUS bit1 = spi_wr
-    await axi_write(dut, REG_STATUS, 0x2, cs=0)
+    await wait_done(dut)
+    dut._log.info("send_byte: SPILEN done")
 
+    # 4) Write TX FIFO (MSB-aligned!)
+    dut._log.info("send_byte: writing TX_FIFO...")
+    await axi_write(dut, TX_FIFO, (data_byte & 0xFF) << 24, cs=0)
+    await wait_done(dut)
+    dut._log.info("send_byte: TX_FIFO done")
+
+    # 5) Trigger transfer: STATUS bit1 = spi_wr
+    dut._log.info("send_byte: writing STATUS (spi_wr)...")
+    await axi_write(dut, REG_STATUS, 0x2, cs=0)
+    dut._log.info("send_byte: STATUS write dispatched, waiting for done...")
+    await wait_done(dut)
+    dut._log.info("send_byte: STATUS done")
+
+
+async def axi_read(dut, addr, cs=0):
+    dut.req_addr_i.value  = addr
+    dut.req_cs_i.value    = cs
+    dut.req_write_i.value = 0
+    dut.req_valid_i.value = 1
+    await RisingEdge(dut.clk)
+    dut.req_valid_i.value = 0
+    await wait_done(dut)
+    return int(dut.resp_rdata_o.value)
+
+
+async def wait_spi_idle(dut, max_cycles=20000):
+    for _ in range(max_cycles):
+        s = await axi_read(dut, REG_STATUS)
+        # spi_status[2:0] is the controller state encoding in this IP
+        # In your earlier wave it looked like idle = 1. Confirm once and keep it.
+        if (s & 0x7) == 1:
+            return
+    raise TimeoutError("SPI never returned to IDLE")
 
 @cocotb.test(timeout_time=60, timeout_unit="sec")
 async def test_send_byte(dut):
     """Verify that a byte can be sent to the mock EEPROM."""
-    slave = await setup(dut)
+    
+    async def watchdog():
+        await Timer(800, "ns")   # pick something reasonable for your sim speed
+        raise TimeoutError("WATCHDOG: test hung")
+
+    cocotb.start_soon(watchdog())
+    await setup(dut)
     await RisingEdge(dut.clk)
 
     # Send 0xAD to the SPI bus
     await send_byte(dut, 0xAD)
+    # await wait_spi_idle(dut)
 
     # Wait for the physical SPI hardware to return to IDLE.
     # Because AXI finishes before the SPI pins stop toggling,
@@ -219,10 +243,6 @@ async def test_send_byte(dut):
     # content = await slave.get_content()
     # Mock returns 0xAAAA based on its code; verify it received something
     # assert content != 0
-
-
-# -- Runner --
-
 
 def test_axi_spi_e2e_runner():
     """
