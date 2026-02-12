@@ -8,7 +8,7 @@ module layr(
     output logic status_valid,
 );
 
-logic initialize_auth, generate_challenge, auth, get_id, verify_id;
+logic auth_init, generate_challenge, auth, get_id, verify_id;
 logic auth_initialized, challenge_generated, authenticated;
 
 logic [128,0] id_cipher;
@@ -26,28 +26,31 @@ layr_controller controller(
     .auth_initialized(auth_initialized),
     .challenge_generated(challenge_generated),
 
-    .initialize_auth(initialize_auth),
-    .generate_challenge(generate_challenge)
+    .auth_init(auth_init),
+    .generate_challenge(generate_challenge),
+    .auth(auth),
+    .get_id(get_id),
+    .verify_id(verify_id)
 );
 
 command_mux mux(
     .clk(clk),
     .rst(rst),
 
-    .auth_init(initialize_auth),
+    .auth_init(auth_init),
     .auth(auth),
     .get_id(get_id),
 
     .card_challenge_rc(card_challenge_rc),
 
-    input logic response_valid,
-    input logic [127: 0] response,
+    //response_valid,
+    //response,
 
     .id_cipher(id_cipher),
     .chip_challenge(chip_challenge_rt),
 
-    output logic [168: 0] command, // 1b cla + 1b ins + 2b instructions (always empty) + 1b lc + 16b daten
-    output logic command_valid
+    //command,
+    //command_valid
 )
 
 /*
