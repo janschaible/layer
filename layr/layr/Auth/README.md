@@ -7,6 +7,8 @@
 
 ## Interfaces
 
+> Notice: The state machines depicted in the figures stem from the planning phase and may not necessarily reflect the current state of the application perfectly.
+
 ### auth_generate_challenge
 
 This module reads the encrypted `AUTH_INIT`, decrypts it, then generates
@@ -19,6 +21,8 @@ set of output bytes to the corresponding bus.
 
 The received rc and rt values are stored in 64 bit registers (flipflops)
 until they are consumed by `verify_id` or overwritten.
+
+![auth_generate_challenge state machine](./img/auth_generate_challenge.png)
 
 Inputs:
 
@@ -46,6 +50,8 @@ Outputs:
 This module receives an ID encrypted with a session key, decrypts it and
 verifies that it is allowed to access the lock. The values rc and rt needed
 for calculating the session key are read from two 64 bit registers.
+
+![auth_verify_id state machine](./img/auth_verify_id.png)
 
 Inputs:
 
