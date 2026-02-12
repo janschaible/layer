@@ -17,6 +17,8 @@ module command_mux(
     output logic [168: 0] command // 1b cla + 1b ins + 2b instructions (always empty) + 1b lc + 16b daten
 );
 
+parameter CLA = 8'h80;
+
 enum {AUTH_INIT, AUTH, GET_ID} active_transmission, next_active_transmission;
 enum {READY, SENDING, RECIEVING} state, next_state;
 
@@ -46,7 +48,6 @@ always_comb begin
 end
 
 always_comb begin
-    cla = 8'h80;
     ins = 8'h00;
     payload = 0;
 
@@ -70,7 +71,7 @@ always_ff @(posedge clk or posedge rst) begin
         command <= '0;
     end else begin
         command <= {
-            cla,
+            CLA,
             ins,
             16'h00, // instructions
             8'h10,  // payload size

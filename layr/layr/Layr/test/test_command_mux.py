@@ -6,10 +6,12 @@ Uses async/await syntax and modern pythonic patterns.
 import os
 from pathlib import Path
 
+import secrets
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import Timer, FallingEdge, RisingEdge, NextTimeStep, ReadOnly
 from cocotb.types import LogicArray
+
 
 from cocotb_tools.runner import get_runner
 
@@ -26,19 +28,23 @@ async def reset(dut):
 async def test_transmission_mode_cannot_be_changed_when_running(dut):
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await reset(dut)
+    challenge = secrets.token_bytes(16)
+    expected = int.from_bytes(0x08011000010.to_bytes(5, byteorder="big") + challenge, byteorder="big")
+
     dut.auth.value = 1
+    dut.card_challenge_rc.value = int.from_bytes(challenge, byteorder="big")
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
     assert dut.state.value == 1, "Expected the fsm to be in sending state"
-    assert dut.active_transmission == 1, "Expected active transmission to be of type auth"
-    assert dut.command.value == 0x0801100001000000000000000000000000000000000
+    assert dut.active_transmission.value == 1, "Expected active transmission to be of type auth"
+    assert dut.command.value == expected, f"Expected the value to be {bin(expected)}"
 
     dut.auth_init.value = 1
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
     assert dut.state.value == 1, "Expected the fsm to still be in sending state"
-    assert dut.active_transmission == 1, "Expected active transmission to still be of type auth"
-    assert dut.command.value == 0x0801100001000000000000000000000000000000000
+    assert dut.active_transmission.value == 1, "Expected active transmission to still be of type auth"
+    assert dut.command.value == expected
 
     dut._log.info("✓ Full test passed")
 
