@@ -94,7 +94,11 @@ module auth(
         // Outputs
         .error_o(error),
         .challenge_valid_o(generate_challenge_valid),
-        .data_o(reg_data_o)
+        .data_o(reg_data_o),
+        .aes_cs_o(aes_cs),
+        .aes_we_o(aes_we),
+        .aes_address_o(aes_address),
+        .aes_write_data_o(aes_write_data)
     );
 
     auth_verify_id verify_id(
@@ -108,6 +112,10 @@ module auth(
         // Outputs
         .error_o(error),
         .success_o(id_valid)
+        .aes_cs_o(aes_cs),
+        .aes_we_o(aes_we),
+        .aes_address_o(aes_address),
+        .aes_write_data_o(aes_write_data)
     );
 
     always_ff @(posedge clk or posedge rst) begin

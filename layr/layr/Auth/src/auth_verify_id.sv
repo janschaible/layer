@@ -6,7 +6,11 @@ module auth_verify_id(
     input logic [127:0] id_cipher_i,
 
     output logic error_o,
-    output logic success_o
+    output logic success_o,
+    output reg aes_cs_o,
+    output reg aes_we_o,
+    output reg [7:0] aes_address_o,
+    output reg [31:0] aes_write_data_o
 );
 
     reg [127:0] reg_id_cipher;

@@ -6,7 +6,11 @@ module auth_generate_challenge(
 
     output logic error_o,
     output logic challenge_valid_o,
-    output logic [127:0] challenge_response_o
+    output logic [127:0] challenge_response_o,
+    output reg aes_cs_o,
+    output reg aes_we_o,
+    output reg [7:0] aes_address_o,
+    output reg [31:0] aes_write_data_o
 );
     enum {
         IDLE,
