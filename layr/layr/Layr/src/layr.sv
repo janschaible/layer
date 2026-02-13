@@ -6,16 +6,19 @@ module layr(
     input logic response_valid,
     input logic [127: 0] response,
 
+    output logic command_valid,
+    output logic [168: 0] command,
+
     output logic status,
     output logic status_valid
 );
 
 logic auth_init, generate_challenge, auth, get_id, verify_id;
-logic auth_initialized, challenge_generated, authenticated, id_retrieved;
+logic auth_initialized, challenge_generated, authenticated, id_retrieved, id_verified;
 
 logic [127:0] id_cipher;
-logic [127:0] card_challenge_rc;
-logic [127:0] chip_challenge_rt, chip_challenge_rt_new;
+logic [127:0] card_cipher;
+logic [127:0] chip_cypher, chip_cypher_new;
 
 logic rst_;
 assign rst_ = rst | ~card_present;
@@ -44,7 +47,7 @@ command_mux mux(
     .auth(auth),
     .get_id(get_id),
 
-    .chip_challenge(chip_challenge_rt),
+    .chip_challenge(chip_cypher),
 
     .response_valid(),
     .response(),
@@ -52,10 +55,27 @@ command_mux mux(
     .auth_initialized(auth_initialized),
     .id_cipher(id_cipher),
 
-    .card_challenge(card_challenge_rc),
+    .card_challenge(card_cipher),
 
     .command(),
     .command_valid()
+);
+
+layr_auth auth_i(
+    .clk(clk),
+    .rst(rst),
+
+    .generate_challenge(generate_challenge),
+    .verify_id(verify_id),
+
+    .card_cipher(card_cipher),
+    .id_cipher(id_cipher),
+
+    .chip_challenge_generated(challenge_generated),
+    .chip_challenge(chip_cypher),
+
+    .id_verified(id_verified),
+    .id_valid()
 );
 
 /*
@@ -64,8 +84,8 @@ auth_verify_id auth_v(
     .rst(rst),
     .external_valid(verify_id),
     .id_cipher(id_cipher),
-    .rc(card_challenge_rc),
-    .rt(chip_challenge_rt),
+    .rc(card_cipher),
+    .rt(chip_cypher),
     // todo js error stuff...
 );
 
@@ -73,18 +93,18 @@ auth_generate_challenge auth_g(
     .clk(clk),
     .rst(rst),
     .external_valid_i(generate_challenge),
-    .input_cipher_i(card_challenge_rc),
+    .input_cipher_i(card_cipher),
 
     // todo js output logic error_o,
     // todo js output logic internal_ready_o,
     .internal_valid_o(challenge_generated),
-    .challenge_response_o(chip_challenge_rt_new)
+    .challenge_response_o(chip_cypher_new)
 )
 */
 
 always_ff @(posedge clk) begin
     if (challenge_generated) begin
-        chip_challenge_rt <= chip_challenge_rt_new;
+        chip_cypher <= chip_cypher_new;
     end
 end
 
