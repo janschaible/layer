@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import cocotb
+from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
 
 from cocotb_tools.runner import get_runner
@@ -23,6 +24,8 @@ class LayrTester:
 
 async def reset(dut):
     """Apply reset pulse."""
+    dut.card_present.value = 0
+
     dut.rst.value = 1
     await RisingEdge(dut.clk)
     dut.rst.value = 0
@@ -31,6 +34,12 @@ async def reset(dut):
 
 @cocotb.test()
 async def test_happy_path(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset(dut)
+
+    dut.card_present.value = 1
+    dut.response_valid = 1
+
     dut._log.info("✓ Full test passed")
 
 

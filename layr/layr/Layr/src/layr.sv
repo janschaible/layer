@@ -3,6 +3,9 @@ module layr(
     input logic rst,
     input logic card_present,
 
+    input logic response_valid,
+    input logic [127: 0] response,
+
     output logic status,
     output logic status_valid
 );
@@ -48,7 +51,6 @@ command_mux mux(
 
     .auth_initialized(auth_initialized),
     .id_cipher(id_cipher),
-
 
     .card_challenge(card_challenge_rc),
 
