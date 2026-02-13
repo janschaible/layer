@@ -15,8 +15,8 @@ module auth_init(
         CONFIG
     } current_state, next_state;
 
-    reg key_loaded;
-    reg [31:0] reg_key [0:7];
+    reg key_loaded; // TODO: Handle key_loaded = 1 state (Skip FETCH state)
+    reg [31:0] reg_key [0:7]; // Store key locally after first init, so external connection to EEPROM is only necessary once.
     reg [2:0] key_index;
 
     always_ff @(posedge clk or posedge rst) begin
@@ -30,9 +30,6 @@ module auth_init(
             aes_write_data_o <= 32'b0;
 
         end else if (current_state == FETCH) begin
-            // TODO: Is it possible to directly direct the read data from the
-            //       EEPROM to the aes core? would skip the local register
-            //       completely.
             if (key_index == 4'd3) begin
                 key_index <= 4'd0;
                 current_state <= CONFIG;
@@ -72,6 +69,8 @@ module auth_init(
             FETCH: begin
                 // TODO: Get key from EEPROM, prolly not possible in one cycle.
                 // Only change state to config after key has been loaded.
+                // TODO: Keep in mind that key index 0 is the most significant
+                // portion of the key.
                 reg_key[key_index] = 32'd10 + key_index;
             end
 

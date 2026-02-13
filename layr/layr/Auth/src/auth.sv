@@ -38,7 +38,7 @@ module auth(
     output reg [127:0] data_o,
     output wire valid_o
 );
-    // aes connections
+    // AES core connections
     wire aes_cs;
     wire aes_we;
     wire [7:0] aes_address;
@@ -88,6 +88,7 @@ module auth(
         // Inputs
         .ready_i(!reg_operation),
         .input_cipher_i(reg_data_i),
+        .aes_read_data_i(aes_read_data),
 
         // Outputs
         .error_o(error),
