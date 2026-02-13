@@ -9,7 +9,7 @@ module layr(
 );
 
 logic auth_init, generate_challenge, auth, get_id, verify_id;
-logic auth_initialized, challenge_generated, authenticated;
+logic auth_initialized, challenge_generated, authenticated, id_retrieved;
 
 logic [128,0] id_cipher;
 logic [128:0] card_challenge_rc;
@@ -25,6 +25,7 @@ layr_controller controller(
 
     .auth_initialized(auth_initialized),
     .challenge_generated(challenge_generated),
+    .id_retrieved(id_retrieved),
 
     .auth_init(auth_init),
     .generate_challenge(generate_challenge),
@@ -41,16 +42,19 @@ command_mux mux(
     .auth(auth),
     .get_id(get_id),
 
-    .card_challenge_rc(card_challenge_rc),
+    .chip_challenge_rc(chip_challenge_rt),
 
-    //response_valid,
-    //response,
+    .response_valid(),
+    .response(),
 
+    .auth_initialized(auth_initialized),
     .id_cipher(id_cipher),
-    .chip_challenge(chip_challenge_rt),
 
-    //command,
-    //command_valid
+
+    .card_challenge(chip_challenge_rt),
+
+    .command(),
+    .command_valid()
 )
 
 /*

@@ -15,13 +15,18 @@ module command_mux(
     input logic auth,
     input logic get_id,
 
-    input logic [127: 0] chip_challenge_rc,
+    input logic [127: 0] chip_challenge,
 
     input logic response_valid,
     input logic [127: 0] response,
 
-    output logic [127: 0] id_cipher,
+    output logic auth_initialized,
     output logic [127: 0] card_challenge,
+
+    output logic authed,
+
+    output logic id_retrieved,
+    output logic [127: 0] id_cipher,
 
     output logic [168: 0] command, // 1b cla + 1b ins + 2b instructions (always empty) + 1b lc + 16b daten
     output logic command_valid
@@ -69,7 +74,7 @@ always_comb begin
         end
         AUTH: begin
             ins = 8'h11;
-            payload = chip_challenge_rc;
+            payload = chip_challenge;
         end
         GET_ID: begin
             ins = 8'h12;
@@ -110,8 +115,13 @@ end
 // assign the response to the corresponding output
 always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
-        id_cipher <= '0;
-        card_challenge <= '0;
+        auth_initialized <= 0;
+        card_challenge <= 0;
+
+        authed <= 0;
+
+        id_retrieved <= 0;
+        id_cipher <= 0;
     end else begin
 
         state <= next_state;
@@ -120,10 +130,13 @@ always_ff @(posedge clk or posedge rst) begin
             case(active_transmission)
                 AUTH_INIT: begin
                     card_challenge <= response;
+                    auth_initialized <= 1;
                 end
                 AUTH: begin
+                    authed <= 1;
                 end
                 GET_ID: begin
+                    id_retrieved <= 1;
                     id_cipher <= response;
                 end
             endcase

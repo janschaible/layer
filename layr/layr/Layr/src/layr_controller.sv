@@ -1,3 +1,7 @@
+/*
+This module is responsible for tracking the overall protocol.
+Including the handshakes with the nfc card and the local computations required for the authentication.
+*/
 module layr_controller(
     input logic clk,
     input logic rst,
@@ -5,7 +9,7 @@ module layr_controller(
     input logic start,
     input logic auth_initialized,
     input logic challenge_generated,
-    input logic authenticated,
+    input logic authed,
     input logic id_retrieved,
 
     output logic auth_init,
@@ -17,7 +21,7 @@ module layr_controller(
 
 enum {READY, AUTH_INIT, GENERATE_CHALLENGE, AUTH, GET_ID, VERIFY_ID} state, next_state;
 
-
+// Driving the state
 always_comb begin
     next_state = state;
     case (state)
@@ -37,7 +41,7 @@ always_comb begin
             end
         end
         AUTH: begin
-            if(authenticated) begin
+            if(authed) begin
                 next_state=GET_ID;
             end
         end
@@ -52,6 +56,7 @@ always_comb begin
     endcase
 end
 
+// Assignments
 always_ff @(posedge clk) begin
     auth_init = 0;
     generate_challenge = 0;
@@ -80,7 +85,8 @@ always_ff @(posedge clk) begin
     endcase
 end
 
-always_ff @(posedge clk or posedge rst) begin
+// Advancing the state
+always_ff @(posedge clk) begin
     if (rst) begin
         state <= READY;
     end else begin

@@ -57,7 +57,7 @@ async def reset(dut):
     dut.start.value = 0
     dut.auth_initialized.value = 0
     dut.challenge_generated.value = 0
-    dut.authenticated.value = 0
+    dut.authed.value = 0
     dut.id_retrieved.value = 0
 
     dut.rst.value = 1
@@ -89,10 +89,10 @@ async def test_full(dut):
     await tester.check_outputs("AUTH")
     dut.challenge_generated.value = 0
 
-    dut.authenticated.value = 1
+    dut.authed.value = 1
     await RisingEdge(dut.clk)
     await tester.check_outputs("GET_ID")
-    dut.authenticated.value = 0
+    dut.authed.value = 0
 
     dut.id_retrieved.value = 1
     await RisingEdge(dut.clk)
