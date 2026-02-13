@@ -8,22 +8,27 @@ from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import Timer, FallingEdge, RisingEdge, NextTimeStep, ReadOnly
-from cocotb.types import LogicArray
+from cocotb.triggers import RisingEdge, NextTimeStep, ReadOnly
 
 from cocotb_tools.runner import get_runner
 
-os.environ['COCOTB_ANSI_OUTPUT'] = '1'
+os.environ["COCOTB_ANSI_OUTPUT"] = "1"
 
 outputs = [
-    "initialize_auth",
-    "generate_challenge"
+    "auth_init",
+    "generate_challenge",
+    "auth",
+    "get_id",
+    "verify_id",
 ]
 
 expected = {
     "READY": [],
-    "INITIALIZE_AUTH": ["initialize_auth"],
-    "GENERATE_CHALLENGE": ["generate_challenge"]
+    "AUTH_INIT": ["auth_init"],
+    "GENERATE_CHALLENGE": ["generate_challenge"],
+    "AUTH": ["auth"],
+    "GET_ID": ["get_id"],
+    "VERIFY_ID": ["verify_id"],
 }
 
 
@@ -38,20 +43,31 @@ class ControllerTester:
         await NextTimeStep()
         for output in outputs:
             if output in expected[state]:
-                assert getattr(self.dut,output).value == 1, f"expected output '{output}' to be high in state {state}"
+                assert getattr(self.dut, output).value == 1, (
+                    f"expected output '{output}' to be high in state {state}"
+                )
             else:
-                print("output", output)
-                assert getattr(self.dut,output).value == 0, f"expected output '{output}' to be low in state {state}"
+                assert getattr(self.dut, output).value == 0, (
+                    f"expected output '{output}' to be low in state {state}"
+                )
+
 
 async def reset(dut):
     """Apply reset pulse."""
+    dut.start.value = 0
+    dut.auth_initialized.value = 0
+    dut.challenge_generated.value = 0
+    dut.authenticated.value = 0
+    dut.id_retrieved.value = 0
+
     dut.rst.value = 1
     await RisingEdge(dut.clk)
     dut.rst.value = 0
     await RisingEdge(dut.clk)
 
+
 @cocotb.test()
-async def test_happy_path(dut):
+async def test_full(dut):
     """Test: verify happy path."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await reset(dut)
@@ -60,7 +76,7 @@ async def test_happy_path(dut):
 
     dut.start.value = 1
     await RisingEdge(dut.clk)
-    await tester.check_outputs("INITIALIZE_AUTH")
+    await tester.check_outputs("AUTH_INIT")
     dut.start.value = 0
 
     dut.auth_initialized.value = 1
@@ -68,7 +84,23 @@ async def test_happy_path(dut):
     await tester.check_outputs("GENERATE_CHALLENGE")
     dut.auth_initialized.value = 0
 
+    dut.challenge_generated.value = 1
+    await RisingEdge(dut.clk)
+    await tester.check_outputs("AUTH")
+    dut.challenge_generated.value = 0
+
+    dut.authenticated.value = 1
+    await RisingEdge(dut.clk)
+    await tester.check_outputs("GET_ID")
+    dut.authenticated.value = 0
+
+    dut.id_retrieved.value = 1
+    await RisingEdge(dut.clk)
+    await tester.check_outputs("VERIFY_ID")
+    dut.id_retrieved.value = 0
+
     dut._log.info("✓ Full test passed")
+
 
 def test_layr_controller_runner():
     sim = os.getenv("SIM", "icarus")
@@ -84,10 +116,13 @@ def test_layr_controller_runner():
         always=True,
         waves=True,
         timescale=("1ns", "1ps"),
-        verbose=True
+        verbose=True,
     )
 
-    runner.test(hdl_toplevel="layr_controller", test_module="test_layr_controller", waves=True)
+    runner.test(
+        hdl_toplevel="layr_controller", test_module="test_layr_controller", waves=True
+    )
+
 
 if __name__ == "__main__":
     test_layr_controller_runner()

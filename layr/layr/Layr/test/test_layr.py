@@ -7,24 +7,11 @@ import os
 from pathlib import Path
 
 import cocotb
-from cocotb.clock import Clock
-from cocotb.triggers import Timer, FallingEdge, RisingEdge, NextTimeStep, ReadOnly
-from cocotb.types import LogicArray
+from cocotb.triggers import RisingEdge
 
 from cocotb_tools.runner import get_runner
 
-os.environ['COCOTB_ANSI_OUTPUT'] = '1'
-
-outputs = [
-    "initialize_auth",
-    "generate_challenge"
-]
-
-expected = {
-    "READY": [],
-    "INITIALIZE_AUTH": ["initialize_auth"],
-    "GENERATE_CHALLENGE": ["generate_challenge"]
-}
+os.environ["COCOTB_ANSI_OUTPUT"] = "1"
 
 
 class LayrTester:
@@ -33,6 +20,7 @@ class LayrTester:
     def __init__(self, dut):
         self.dut = dut
 
+
 async def reset(dut):
     """Apply reset pulse."""
     dut.rst.value = 1
@@ -40,10 +28,11 @@ async def reset(dut):
     dut.rst.value = 0
     await RisingEdge(dut.clk)
 
+
 @cocotb.test()
 async def test_happy_path(dut):
-
     dut._log.info("✓ Full test passed")
+
 
 def test_layr_controller_runner():
     sim = os.getenv("SIM", "icarus")
@@ -59,10 +48,11 @@ def test_layr_controller_runner():
         always=True,
         waves=True,
         timescale=("1ns", "1ps"),
-        verbose=True
+        verbose=True,
     )
 
     runner.test(hdl_toplevel="layr", test_module="test_layr", waves=True)
+
 
 if __name__ == "__main__":
     test_layr_controller_runner()

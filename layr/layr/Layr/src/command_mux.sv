@@ -39,7 +39,6 @@ logic [7:0] cla, ins;
 always_comb begin
     next_state = state;
     next_active_transmission = active_transmission;
-    command_valid = 0;
     case(state)
         READY: begin
             if(auth_init)
@@ -53,7 +52,6 @@ always_comb begin
             end
         end
         EXECUTING:begin
-            command_valid = 1;
             if(response_valid) begin
                 next_state = READY;
             end
@@ -83,14 +81,17 @@ end
 always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
         command <= '0;
+        command_valid <= 0;
     end else begin
-        command <= {
-            CLA,
-            ins,
-            16'h00, // instructions
-            8'h10,  // payload size
-            payload
-        };
+        if(state == READY & next_state != READY)
+            command <= {
+                CLA,
+                ins,
+                16'h00, // instructions
+                8'h10,  // payload size
+                payload
+            };
+        command_valid <= next_state != READY;
     end
 end
 
