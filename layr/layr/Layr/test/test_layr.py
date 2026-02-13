@@ -38,8 +38,8 @@ def test_layr_controller_runner():
     sim = os.getenv("SIM", "icarus")
 
     proj_path = Path(__file__).resolve().parent.parent
-
-    sources = [proj_path / "src" / "layr.sv"]
+    root = proj_path / "src"
+    sources = [p for p in root.rglob("*") if p.is_file()]
 
     runner = get_runner(sim)
     runner.build(

@@ -27,9 +27,7 @@ module command_reader #(
     logic [$clog2(NUM_BYTES)-1:0] byte_idx;
 
     // Always ready to receive in this simple implementation
-    always_comb begin
-        rx_ready = 1'b1;
-    end
+    assign rx_ready = 1'b1;
 
     // FSM sequential logic
     always_ff @(posedge clk or posedge rst) begin
@@ -44,8 +42,12 @@ module command_reader #(
         next_state = state;
         case (state)
             WAIT: begin
-                if (rx_valid)
-                    next_state = (NUM_BYTES == 1 || rx_last) ? WAIT : RECV;
+                if (rx_valid) begin
+                    if (NUM_BYTES == 1 || rx_last)
+                        next_state = WAIT;
+                    else
+                        next_state = RECV;
+                end
             end
 
             RECV: begin

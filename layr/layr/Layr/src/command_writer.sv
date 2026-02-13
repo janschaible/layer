@@ -90,11 +90,18 @@ module command_writer #(
                     end else if (tx_ready) begin
                         // Receiver accepted the byte
                         tx_valid <= 1'b0;
-                        tx_last  <= 1'b0;
 
-                        // Advance to next byte if any remain
-                        if (byte_idx != NUM_BYTES-1)
+                        // When the last byte is accepted, keep tx_last
+                        // asserted for this cycle so that downstream logic
+                        // can still observe it after the handshake.
+                        if (byte_idx == NUM_BYTES-1) begin
+                            tx_last <= 1'b1;
+                        end else begin
+                            tx_last <= 1'b0;
+
+                            // Advance to next byte if any remain
                             byte_idx <= byte_idx + 1'b1;
+                        end
                     end
                 end
             endcase

@@ -2,18 +2,17 @@ module layr(
     input logic clk,
     input logic rst,
     input logic card_present,
-    output logic verify_id
 
     output logic status,
-    output logic status_valid,
+    output logic status_valid
 );
 
 logic auth_init, generate_challenge, auth, get_id, verify_id;
 logic auth_initialized, challenge_generated, authenticated, id_retrieved;
 
-logic [128,0] id_cipher;
-logic [128:0] card_challenge_rc;
-logic [128:0] chip_challenge_rt, chip_challenge_rt_new;
+logic [127:0] id_cipher;
+logic [127:0] card_challenge_rc;
+logic [127:0] chip_challenge_rt, chip_challenge_rt_new;
 
 logic rst_;
 assign rst_ = rst | ~card_present;
@@ -42,7 +41,7 @@ command_mux mux(
     .auth(auth),
     .get_id(get_id),
 
-    .chip_challenge_rc(chip_challenge_rt),
+    .chip_challenge(chip_challenge_rt),
 
     .response_valid(),
     .response(),
@@ -51,11 +50,11 @@ command_mux mux(
     .id_cipher(id_cipher),
 
 
-    .card_challenge(chip_challenge_rt),
+    .card_challenge(card_challenge_rc),
 
     .command(),
     .command_valid()
-)
+);
 
 /*
 auth_verify_id auth_v(
@@ -82,11 +81,10 @@ auth_generate_challenge auth_g(
 */
 
 always_ff @(posedge clk) begin
-    if(challenge_generated)begin
+    if (challenge_generated) begin
         chip_challenge_rt <= chip_challenge_rt_new;
     end
 end
-
 
 
 endmodule
