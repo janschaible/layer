@@ -44,11 +44,11 @@ module auth(
     always_ff @(posedge start_i) begin
         reg_operation <= operation_i;
         valid_o <= 0;
+        ctr <= 8'h05;
         if (operation_i == 0) begin
             data_o <= '1;
-            ctr <= 8'h05;
         end else if (operation_i == 1) begin
-            data_o <= '1;
+            data_o <= 1;
         end
     end
 
@@ -69,3 +69,4 @@ module auth(
     end
 
 endmodule
+ 

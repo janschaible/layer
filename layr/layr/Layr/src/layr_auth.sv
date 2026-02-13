@@ -50,17 +50,17 @@ always_ff @(posedge clk) begin
         id_verified <= 0;
         id_valid <= 0;
         start <= 0;
+    end
+end
+
+always_ff @(posedge auth_valid) begin
+    start <= 0;
+    if(operation==0) begin
+        chip_challenge <= auth_data_out;
+        chip_challenge_generated <= 1;
     end else begin
-        if(auth_valid)begin
-            start <= 0;
-            if(operation==0) begin
-                chip_challenge <= auth_data_out;
-                chip_challenge_generated <= 1;
-            end else begin
-                id_valid <= auth_data_out[0];
-                id_verified <= 1;
-            end
-        end
+        id_valid <= auth_data_out[0];
+        id_verified <= 1;
     end
 end
 
