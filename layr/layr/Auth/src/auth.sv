@@ -34,8 +34,8 @@ module auth(
     //   1 = the operation is done, data
     //       can be read from data_o
     //--------------------------------------
-    input wire [127:0] data_i,
-    output wire [127:0] data_o,
+    input reg [127:0] data_i,
+    output reg [127:0] data_o,
     output wire valid_o
 );
     // aes connections
@@ -52,8 +52,6 @@ module auth(
     reg error;
     reg generate_challenge_valid;
     reg id_valid;
-    reg [127:0] reg_data_i;
-    reg [127:0] reg_data_o;
 
     aes aes(
         .clk(clk),

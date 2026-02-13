@@ -1,13 +1,46 @@
 # Auth Controller
 
 - [Interfaces](#Interfaces)
-    - [generate_challenge](#generate_challenge)
-    - [verify_id](#verify_id)
+    - [auth](#auth)
+    - [auth_generate_challenge](#auth_generate_challenge)
+    - [auth_verify_id](#auth_verify_id)
     - [auth_init](#auth_init)
 
 ## Interfaces
 
 > Notice: The state machines depicted in the figures stem from the planning phase and may not necessarily reflect the current state of the application perfectly.
+
+### auth
+
+This is the wrapper module for all below functionality.
+It provides a simple interface for interaction with the authentication functionality.
+
+The IO-bus of 128 bit in each direction enables single-cycle reads/writes in both directions, as this is the maximum size of
+data to be transmitted to and from the module.
+
+There are two operations required for the LAYR protocol: `generate_challenge` and `verify_id`.
+The respective operation can be selected with the single bit input `operation_i`.
+Once the input has been set on `data_i`, the operation can be started by setting `start_i` to true.
+
+
+Inputs:
+
+| Name & Type | Comment |
+|-------------|---------|
+| `input wire clk` | Clock |
+| `input wire rst` | Reset |
+| `input wire operation_i` | Which operation to perform. |
+| `input wire start_i` | Trigger the selected operation. |
+| `input reg [127:0] data_i` | Bus for input data. |
+
+Outputs:
+
+| Name & Type | Comment |
+|-------------|---------|
+| `output wire valid_o` | Specifies whether the output data is ready to be read. |
+| `output reg [127:0] data_o` | Bus for the output data. |
+
+---
 
 ### auth_generate_challenge
 
