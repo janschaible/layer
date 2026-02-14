@@ -45,6 +45,52 @@ async def test_happy_path(dut):
     dut._log.info("✓ Full test passed")
 
 
+# todo js generated
+
+
+async def advance_cycles(dut, cycles: int):
+    """Helper to advance a given number of clock cycles."""
+    for _ in range(cycles):
+        await RisingEdge(dut.clk)
+
+
+@cocotb.test()
+async def test_no_command_without_card_present(dut):
+    """Ensure no command is issued when no card is present."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset(dut)
+
+    # Keep card absent and let the design run for a few cycles
+    dut.card_present.value = 0
+    dut.response_valid.value = 0
+    await advance_cycles(dut, 5)
+
+    # With no card present, we don't expect a command to be driven
+    assert int(dut.command.value) == 0, "Expected no command when card is not present"
+
+
+@cocotb.test()
+async def test_multiple_happy_sessions(dut):
+    """Run the happy path multiple times to check stability."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+
+    for _ in range(3):
+        await reset(dut)
+
+        dut.card_present.value = 1
+        dut.response_valid.value = 1
+
+        # Allow the design a couple of cycles to react
+        await advance_cycles(dut, 2)
+
+        assert dut.command.value == 0x0801200001000000000000000000000000000000000, (
+            "Expected GET_ID command for each session"
+        )
+
+
+# todo js generated
+
+
 def test_layr_controller_runner():
     sim = os.getenv("SIM", "icarus")
 
