@@ -35,7 +35,7 @@ module command_mux(
 parameter CLA = 8'h80;
 
 enum {AUTH_INIT, AUTH, GET_ID} active_transmission, next_active_transmission;
-enum {READY, EXECUTING} state, next_state;
+enum {READY, EXECUTING, DONE} state, next_state;
 
 
 logic [127:0] payload;

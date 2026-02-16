@@ -25,6 +25,8 @@ class LayrTester:
 async def reset(dut):
     """Apply reset pulse."""
     dut.card_present.value = 0
+    dut.response_valid.value = 0
+    dut.response.value = 0
 
     dut.rst.value = 1
     await RisingEdge(dut.clk)
@@ -38,14 +40,23 @@ async def test_happy_path(dut):
     await reset(dut)
 
     dut.card_present.value = 1
-    dut.response_valid.value = 1
+    await advance_cycles(dut, 5)
+    assert dut.command.value == 0x0801000001000000000000000000000000000000000
 
-    assert dut.command.value == 0x0801200001000000000000000000000000000000000
+    dut.response_valid.value = 1
+    dut.response.value = 42
+    await advance_cycles(dut, 2)
+    assert dut.chip_cypher.value == 0, "Expected the challenge not to be set yet"
+    dut.response.value = 0
+    dut.response_valid.value = 0
+    await advance_cycles(dut, 11)
+    assert dut.chip_cypher.value == 42 + 42, (
+        "Expected the card challenge to be generated"
+    )
+
+    # todo js finish
 
     dut._log.info("✓ Full test passed")
-
-
-# todo js generated
 
 
 async def advance_cycles(dut, cycles: int):
@@ -81,14 +92,11 @@ async def test_multiple_happy_sessions(dut):
         dut.response_valid.value = 1
 
         # Allow the design a couple of cycles to react
-        await advance_cycles(dut, 2)
+        await advance_cycles(dut, 5)
 
-        assert dut.command.value == 0x0801200001000000000000000000000000000000000, (
+        assert dut.command.value == 0x0801000001000000000000000000000000000000000, (
             "Expected GET_ID command for each session"
         )
-
-
-# todo js generated
 
 
 def test_layr_controller_runner():
@@ -96,7 +104,9 @@ def test_layr_controller_runner():
 
     proj_path = Path(__file__).resolve().parent.parent
     root = proj_path / "src"
+    mocks = proj_path / "test" / "mocks"
     sources = [p for p in root.rglob("*") if p.is_file()]
+    sources += [p for p in mocks.rglob("*") if p.is_file()]
 
     runner = get_runner(sim)
     runner.build(

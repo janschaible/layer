@@ -28,7 +28,6 @@ async def reset(dut):
     await RisingEdge(dut.clk)
 
 
-"""
 @cocotb.test()
 async def test_generating_multiple_challenges(dut):
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
@@ -43,7 +42,9 @@ async def test_generating_multiple_challenges(dut):
         assert dut.chip_challenge_generated.value == 1, (
             "Expected the challenge to be generated"
         )
-        assert dut.chip_challenge.value == 2**128 - 1, "Expected valid challenge"
+        assert dut.chip_challenge.value == 0x1234 + 42, (
+            "Expected card_cipher + 42 (from mock impl)"
+        )
 
         await reset(dut)
         assert dut.chip_challenge_generated.value == 0, (
@@ -58,7 +59,7 @@ async def test_verify_id_sets_flags(dut):
     for _ in range(2):
         await reset(dut)
 
-        dut.id_cipher.value = 0xDEADBEEF
+        dut.id_cipher.value = 42
         dut.verify_id.value = 1
         await RisingEdge(dut.clk)
         dut.verify_id.value = 0
@@ -68,7 +69,6 @@ async def test_verify_id_sets_flags(dut):
 
         assert dut.id_verified.value == 1, "Expected ID to be verified"
         assert dut.id_valid.value == 1, "Expected ID to be reported valid"
-"""
 
 
 @cocotb.test()
@@ -91,7 +91,7 @@ async def test_challenge_then_verify_id(dut):
     )
 
     # Now verify the ID
-    dut.id_cipher.value = 0xCAFEBABE
+    dut.id_cipher.value = 42
     dut.verify_id.value = 1
     await RisingEdge(dut.clk)
     dut.verify_id.value = 0

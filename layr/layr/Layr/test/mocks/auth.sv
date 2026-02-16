@@ -40,15 +40,22 @@ module auth(
 );
     logic [7:0] ctr;
     logic reg_operation;
+    logic start;
 
-    always_ff @(posedge start_i) begin
-        reg_operation <= operation_i;
-        valid_o <= 0;
-        ctr <= 8'h05;
-        if (operation_i == 0) begin
-            data_o <= '1;
-        end else if (operation_i == 1) begin
-            data_o <= 1;
+    always_ff @(posedge clk) begin
+        if(start_i & ~start & ~valid_o) begin
+            reg_operation <= operation_i;
+            ctr <= 8'h05;
+            start <= 1;
+            if (operation_i == 0) begin
+                data_o <= data_i + 'd42;
+            end else if (operation_i == 1) begin
+                if(data_i == 'd42)
+                    // test input is valid if 42
+                    data_o <= '1;
+                else
+                    data_o <= 0;
+            end
         end
     end
 
@@ -58,14 +65,20 @@ module auth(
             reg_operation <= 0;
             data_o <= 0;
             ctr <= 8'h05;
+            start <= 0;
         end
     end
 
     always_ff @(posedge clk) begin
-        if(ctr >= 0 & ctr <= 'h05)
+        if(ctr >= 0 & ctr <= 'h05 & start)
             ctr <= ctr-1;
-        if(ctr == 0)
+        if(ctr == 0 & start)begin
             valid_o <= 1;
+            start <= 0;
+        end
+
+        if(~start)
+            valid_o <= 0;
     end
 
 endmodule

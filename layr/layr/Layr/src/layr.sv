@@ -49,16 +49,16 @@ command_mux mux(
 
     .chip_challenge(chip_cypher),
 
-    .response_valid(),
-    .response(),
+    .response_valid(response_valid),
+    .response(response),
 
     .auth_initialized(auth_initialized),
     .id_cipher(id_cipher),
 
     .card_challenge(card_cipher),
 
-    .command(),
-    .command_valid()
+    .command(command),
+    .command_valid(command_valid)
 );
 
 layr_auth auth_i(
@@ -72,37 +72,15 @@ layr_auth auth_i(
     .id_cipher(id_cipher),
 
     .chip_challenge_generated(challenge_generated),
-    .chip_challenge(chip_cypher),
+    .chip_challenge(chip_cypher_new),
 
     .id_verified(id_verified),
     .id_valid()
 );
 
-/*
-auth_verify_id auth_v(
-    .clk(clk),
-    .rst(rst),
-    .external_valid(verify_id),
-    .id_cipher(id_cipher),
-    .rc(card_cipher),
-    .rt(chip_cypher),
-    // todo js error stuff...
-);
-
-auth_generate_challenge auth_g(
-    .clk(clk),
-    .rst(rst),
-    .external_valid_i(generate_challenge),
-    .input_cipher_i(card_cipher),
-
-    // todo js output logic error_o,
-    // todo js output logic internal_ready_o,
-    .internal_valid_o(challenge_generated),
-    .challenge_response_o(chip_cypher_new)
-)
-*/
-
 always_ff @(posedge clk) begin
+    if(rst)
+        chip_cypher <= 0;
     if (challenge_generated) begin
         chip_cypher <= chip_cypher_new;
     end
