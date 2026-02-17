@@ -38,25 +38,82 @@ async def reset(dut):
 async def test_happy_path(dut):
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await reset(dut)
+    result = await run_validation(dut, 42)
+    assert result == 1, "Expected the id to be valid"
+    dut._log.info("✓ Full test passed")
 
+
+async def run_validation(dut, id_cypher):
     dut.card_present.value = 1
-    await advance_cycles(dut, 5)
-    assert dut.command.value == 0x0801000001000000000000000000000000000000000
+    assert dut.command_valid.value == 0
+    await await_command_valid(dut, "Auth_Init Command")
+    assert dut.command.value == 0x0801000001000000000000000000000000000000000, (
+        "Auth init"
+    )
 
-    dut.response_valid.value = 1
-    dut.response.value = 42
-    await advance_cycles(dut, 2)
+    await set_response(dut, 24)
     assert dut.chip_cypher.value == 0, "Expected the challenge not to be set yet"
-    dut.response.value = 0
-    dut.response_valid.value = 0
+    assert dut.command_valid.value == 0
     await advance_cycles(dut, 11)
-    assert dut.chip_cypher.value == 42 + 42, (
+    assert dut.chip_cypher.value == 24 + 42, (
         "Expected the card challenge to be generated"
     )
 
-    # todo js finish
+    await await_command_valid(dut, "Auth Command")
+    assert dut.command.value == 0x0801100001000000000000000000000000000000042, "Auth"
 
-    dut._log.info("✓ Full test passed")
+    await set_response(dut, 0)
+
+    assert dut.command_valid.value == 0
+
+    await await_command_valid(dut, "Get Id")
+    assert dut.command.value == 0x0801200001000000000000000000000000000000000, "Get Id"
+
+    await set_response(dut, id_cypher)
+
+    await await_status_valid(dut)
+    result = dut.status.value
+    dut.card_present.value = 0
+    await advance_cycles(dut, 2)
+    return result
+
+
+async def set_response(dut, value):
+    dut.response_valid.value = 1
+    dut.response.value = value
+    await advance_cycles(dut, 2)
+    dut.response.value = 0
+    dut.response_valid.value = 0
+
+
+async def await_command_valid(dut, msg):
+    for _ in range(1000):
+        await RisingEdge(dut.clk)
+        if dut.command_valid.value:
+            break
+    assert dut.command_valid.value == 1, (
+        f"{msg}: did not become valid within the maximum number of time steps"
+    )
+
+
+async def await_status_valid(dut):
+    for _ in range(1000):
+        await RisingEdge(dut.clk)
+        if dut.status_valid.value:
+            break
+    assert dut.status_valid.value == 1, (
+        "did not validate in maximum number of time steps"
+    )
+
+
+async def await_validated(dut, msg):
+    for _ in range(1000):
+        await RisingEdge(dut.clk)
+        if dut.command_valid.value:
+            break
+    assert dut.command_valid.value == 1, (
+        f"{msg}: did not become valid within the maximum number of time steps"
+    )
 
 
 async def advance_cycles(dut, cycles: int):
@@ -84,18 +141,14 @@ async def test_no_command_without_card_present(dut):
 async def test_multiple_happy_sessions(dut):
     """Run the happy path multiple times to check stability."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset(dut)
 
-    for _ in range(3):
-        await reset(dut)
-
-        dut.card_present.value = 1
-        dut.response_valid.value = 1
-
-        # Allow the design a couple of cycles to react
-        await advance_cycles(dut, 5)
-
-        assert dut.command.value == 0x0801000001000000000000000000000000000000000, (
-            "Expected GET_ID command for each session"
+    for i in range(20):
+        valid = (i // 5) % 2
+        id_cypher = 42 if valid else 48
+        result = await run_validation(dut, id_cypher)
+        assert result == valid, (
+            f"Expected the id_cypher {id_cypher} to be {'valid' if valid else 'invalid'}"
         )
 
 

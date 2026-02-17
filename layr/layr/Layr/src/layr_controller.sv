@@ -11,15 +11,20 @@ module layr_controller(
     input logic challenge_generated,
     input logic authed,
     input logic id_retrieved,
+    input logic id_verified,
+    input logic id_valid,
 
     output logic auth_init,
     output logic generate_challenge,
     output logic auth,
     output logic get_id,
-    output logic verify_id
+    output logic verify_id,
+
+    output logic status,
+    output logic status_valid
 );
 
-enum {READY, AUTH_INIT, GENERATE_CHALLENGE, AUTH, GET_ID, VERIFY_ID} state, next_state;
+enum {READY, AUTH_INIT, GENERATE_CHALLENGE, AUTH, GET_ID, VERIFY_ID, REQUEST_VALIDATED, REQUEST_DENIED} state, next_state;
 
 // Driving the state
 always_comb begin
@@ -52,6 +57,12 @@ always_comb begin
             end
         end
         VERIFY_ID: begin
+            if(id_verified) begin
+                if(id_valid)
+                    next_state = REQUEST_VALIDATED;
+                else
+                    next_state = REQUEST_DENIED;
+            end
         end
     endcase
 end
@@ -65,6 +76,8 @@ always_ff @(posedge clk) begin
         auth <= 0;
         get_id <= 0;
         verify_id <= 0;
+        status <= 0;
+        status_valid <= 0;
     end else begin
         state <= next_state;
         auth_init <= 0;
@@ -72,6 +85,7 @@ always_ff @(posedge clk) begin
         auth <= 0;
         get_id <= 0;
         verify_id <= 0;
+        status_valid <= 0;
 
         case (next_state)
             READY: begin
@@ -90,6 +104,14 @@ always_ff @(posedge clk) begin
             end
             VERIFY_ID: begin
                 verify_id <= (state != VERIFY_ID);
+            end
+            REQUEST_VALIDATED: begin
+                status <= 1;
+                status_valid <= (state != REQUEST_VALIDATED);
+            end
+            REQUEST_DENIED: begin
+                status <= 0;
+                status_valid <= (state != REQUEST_DENIED);
             end
         endcase
     end
