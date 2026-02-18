@@ -22,6 +22,7 @@ There are two operations required for the LAYR protocol: `generate_challenge` an
 The respective operation can be selected with the single bit input `operation_i`.
 Once the input has been set on `data_i`, the operation can be started by setting `start_i` to true.
 
+> Notice: The EEPROM interface wires are connected to the EEPROM controller. Documentation can be obtained from there.
 
 Inputs:
 
