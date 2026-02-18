@@ -1,0 +1,157 @@
+
+
+==================================
+   LAYR GUARDIAN - DEBUG MODE
+==================================
+[1] SPI Bus Started (mock)
+SPI TX: 02 0F
+SPI TX: 82 00
+SPI TX: 24 00
+SPI TX: 26 00
+SPI TX: 48 26
+SPI TX: 54 80
+SPI TX: 56 A9
+SPI TX: 58 03
+SPI TX: 5A E8
+SPI TX: 2A 40
+SPI TX: 22 3D
+SPI TX: A8 00
+SPI TX: 28 93
+[2] Reader Firmware Version: 0xSPI TX: EE 00
+92
+
+Ready — simulating card read...
+
+=== CARD DETECTION LOOP ===
+>>> PICC_IsNewCardPresent
+SPI TX: 24 00
+SPI TX: 26 00
+SPI TX: 48 26
+>>> PCD_TransceiveData (sendLen=1)
+SPI TX: 02 00
+SPI TX: 08 7F
+SPI TX: 14 80
+SPI TX: 12 26
+SPI TX: 1A 07
+SPI TX: 02 0C
+SPI TX: 9A 00
+SPI TX: 1A 92
+<<< PCD_TransceiveData
+<<< PICC_IsNewCardPresent (result=1)
+>>> PICC_ReadCardSerial
+SPI TX: 1C 80
+>>> PCD_TransceiveData (sendLen=2)
+SPI TX: 02 00
+SPI TX: 08 7F
+SPI TX: 14 80
+SPI TX: 12 93
+SPI TX: 12 20
+SPI TX: 1A 00
+SPI TX: 02 0C
+SPI TX: 9A 00
+SPI TX: 1A 92
+<<< PCD_TransceiveData
+>>> calculateCRC
+SPI TX: 02 00
+SPI TX: 0A 04
+SPI TX: 14 80
+SPI TX: 12 93
+SPI TX: 12 70
+SPI TX: 12 00
+SPI TX: 12 00
+SPI TX: 12 89
+SPI TX: 12 55
+SPI TX: 12 00
+SPI TX: 02 03
+<<< calculateCRC
+>>> PCD_TransceiveData (sendLen=9)
+SPI TX: 02 00
+SPI TX: 08 7F
+SPI TX: 14 80
+SPI TX: 12 93
+SPI TX: 12 70
+SPI TX: 12 00
+SPI TX: 12 00
+SPI TX: 12 89
+SPI TX: 12 55
+SPI TX: 12 00
+SPI TX: 12 00
+SPI TX: 12 00
+SPI TX: 1A 00
+SPI TX: 02 0C
+SPI TX: 9A 00
+SPI TX: 1A 92
+<<< PCD_TransceiveData
+<<< PICC_ReadCardSerial (ok)
+=== ISO-DEP ESTABLISHMENT ===
+SPI TX: 24 80
+>>> doRATS
+SPI TX: 24 80
+SPI TX: 26 00
+>>> PCD_TransceiveData (sendLen=2)
+SPI TX: 02 00
+SPI TX: 08 7F
+SPI TX: 14 80
+SPI TX: 12 E0
+SPI TX: 12 50
+SPI TX: 1A 00
+SPI TX: 02 0C
+SPI TX: 9A 00
+SPI TX: 1A 92
+<<< PCD_TransceiveData
+SPI TX: 26 80
+SPI TX: 1A 00
+SPI TX: 54 8D
+SPI TX: 56 3E
+<<< doRATS (ok)
+=== APPLICATION SELECT ===
+>>> sendIBlock (payloadLen=11)
+SPI TX: 14 80
+>>> PCD_TransceiveData (sendLen=12)
+SPI TX: 02 00
+SPI TX: 08 7F
+SPI TX: 14 80
+SPI TX: 12 02
+SPI TX: 12 00
+SPI TX: 12 A4
+SPI TX: 12 04
+SPI TX: 12 00
+SPI TX: 12 06
+SPI TX: 12 F0
+SPI TX: 12 00
+SPI TX: 12 00
+SPI TX: 12 0C
+SPI TX: 12 DC
+SPI TX: 12 00
+SPI TX: 1A 00
+SPI TX: 02 0C
+SPI TX: 9A 00
+SPI TX: 1A 92
+<<< PCD_TransceiveData
+<<< sendIBlock (ok=1)
+=== GET CARD ID ===
+>>> sendIBlock (payloadLen=5)
+SPI TX: 14 80
+>>> PCD_TransceiveData (sendLen=6)
+SPI TX: 02 00
+SPI TX: 08 7F
+SPI TX: 14 80
+SPI TX: 12 03
+SPI TX: 12 80
+SPI TX: 12 12
+SPI TX: 12 00
+SPI TX: 12 00
+SPI TX: 12 00
+SPI TX: 1A 00
+SPI TX: 02 0C
+SPI TX: 9A 00
+SPI TX: 1A 92
+<<< PCD_TransceiveData
+<<< sendIBlock (ok=1)
+
+Card UID: 00 00 
+=== EEPROM VERIFY ===
+EEPROM TX: 03 00
+
+[ACCESS GRANTED]
+SPI TX: 24 00
