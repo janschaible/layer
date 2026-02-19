@@ -77,24 +77,88 @@ module test_fpga_mfrc_poll_top (
     .cs_1(cs1)  // active-low chip select – AT25010B
 );
 
-  localparam [32:0]   DELAY_CYCLES = 32'd200_000_000;
+  // ── Heartbeat blink ──
+  localparam [32:0] DELAY_CYCLES = 32'd200_000_000;
+  reg [32:0] blink_ctr;
 
-  reg [32:0] ctr;
+  // ── Periodic EEPROM read ──
+  localparam [127:0] KEY_A = 128'h39558d1f193656ab8b4b65e25ac48474;
+  localparam [127:0] ID_A  = 128'hbbe8278a67f960605adafd6f63cf7ba7;
+  localparam [23:0]  EEPROM_INTERVAL = 24'd100_000;
+
+  typedef enum logic [1:0] {
+    EE_IDLE,
+    EE_START,
+    EE_WAIT
+  } ee_state_t;
+
+  (* MARK_DEBUG = "TRUE" *) ee_state_t ee_state;
+  reg [23:0] ee_ctr;
 
   always_ff @(posedge clk or posedge rst) begin
     if (rst) begin
-      ctr     <= DELAY_CYCLES;
-      led <= 4'b0000;
-    end else begin
-      led[1] <= mfrc_card_present;
-      if (ctr == 0) begin
-        ctr <= DELAY_CYCLES;
-      end else begin
-        ctr <= ctr - 1;
-      end
+      blink_ctr <= DELAY_CYCLES;
+      led       <= 4'b0000;
 
-      if (ctr == DELAY_CYCLES / 2 )
-        led[0] <= 1;
+      // eeprom
+      eeprom_start  <= 1'b0;
+      eeprom_get_key <= 1'b0;
+      ee_state      <= EE_IDLE;
+      ee_ctr        <= EEPROM_INTERVAL;
+    end else begin
+      eeprom_start <= 1'b0;  // default: pulse only one cycle
+
+      // ── LED[1]: card detected ──
+      if (mfrc_card_present)
+        led[1] <= 1'b1;
+
+      // ── LED[0]: heartbeat blink ──
+      if (blink_ctr == 0) begin
+        blink_ctr <= DELAY_CYCLES;
+      end else begin
+        blink_ctr <= blink_ctr - 1;
+      end
+      if (blink_ctr == DELAY_CYCLES / 2)
+        led[0] <= 1'b1;
+
+      // ── Periodic EEPROM reads (every EEPROM_INTERVAL cycles) ──
+      case (ee_state)
+        EE_IDLE: begin
+          if (ee_ctr == 0) begin
+            eeprom_get_key <= ~eeprom_get_key;  // alternate key/id
+            ee_state       <= EE_START;
+          end else begin
+            ee_ctr <= ee_ctr - 1;
+          end
+        end
+
+        EE_START: begin
+          eeprom_start <= 1'b1;
+          ee_state     <= EE_WAIT;
+        end
+
+        EE_WAIT: begin
+          if (eeprom_done) begin
+            if (eeprom_get_key == 0) begin
+              // just read ID
+              if (eeprom_buffer[127:0] == ID_A)
+                led[2] <= 1'b1;
+              else
+                led[2] <= 1'b0;
+            end else begin
+              // just read KEY
+              if (eeprom_buffer[127:0] == KEY_A)
+                led[3] <= 1'b1;
+              else
+                led[3] <= 1'b0;
+            end
+            ee_ctr   <= EEPROM_INTERVAL;
+            ee_state <= EE_IDLE;
+          end
+        end
+
+        default: ee_state <= EE_IDLE;
+      endcase
     end
   end
 endmodule

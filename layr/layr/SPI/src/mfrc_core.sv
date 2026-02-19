@@ -4,20 +4,21 @@
 // No timeout counting or error analysis — higher layers handle that
 // by pulling a hard reset and retrying if needed.
 //
-// Happy path:
+// Happy path (matches working Arduino sequence):
 //   1. Write CommandReg = Idle (stop any active command)
 //   2. Write ComIrqReg = 0x7F (clear all interrupt flags)
 //   3. Flush FIFO
-//   4. Write BitFramingReg (tx last bits)
-//   5. Write TX data to FIFO
+//   4. Write TX data to FIFO
+//   5. Write BitFramingReg (tx last bits, StartSend=0)
 //   6. Write CommandReg = Transceive
-//   7. Write BitFramingReg with StartSend
-//   8. Poll ComIrqReg until RxIRq or IdleIRq (or TimerIRq for timeout)
-//   9. Write CommandReg = Idle
-//  10. Read FIFOLevelReg
-//  11. Read FIFO data
-//  12. Read ControlReg (rx last bits)
-//  13. Done
+//   7. Read BitFramingReg (read-modify-write)
+//   8. Write BitFramingReg with StartSend OR'd in
+//   9. Poll ComIrqReg until RxIRq or IdleIRq (or TimerIRq for timeout)
+//  10. Write CommandReg = Idle
+//  11. Read FIFOLevelReg
+//  12. Read FIFO data
+//  13. Read ControlReg (rx last bits)
+//  14. Done
 //
 // Length encoding follows mfrc_reg_if: 5-bit, 0 = 1 byte, 31 = 32 bytes.
 
@@ -69,7 +70,7 @@ module mfrc_core (
   localparam logic [7:0] IRQ_CLEAR_ALL = 8'h7F;  // Clear all interrupt flags
   localparam logic [7:0] FIFO_FLUSH = 8'h80;
 
-  // ── FSM states (fully linear) ──
+  // ── FSM states (fully linear, matches Arduino sequence) ──
   typedef enum logic [4:0] {
     S_IDLE           = 5'd0,
     S_STOP_ISSUE     = 5'd1,   // Step 1: CommandReg = Idle
@@ -78,25 +79,27 @@ module mfrc_core (
     S_CLRIRQ_WAIT    = 5'd4,
     S_FLUSH_ISSUE    = 5'd5,   // Step 3: Flush FIFO
     S_FLUSH_WAIT     = 5'd6,
-    S_BITFR_ISSUE    = 5'd7,   // Step 4: BitFramingReg
-    S_BITFR_WAIT     = 5'd8,
-    S_FIFOWR_ISSUE   = 5'd9,   // Step 5: Write TX data
-    S_FIFOWR_WAIT    = 5'd10,
+    S_FIFOWR_ISSUE   = 5'd7,   // Step 4: Write TX data to FIFO (BEFORE BitFramingReg)
+    S_FIFOWR_WAIT    = 5'd8,
+    S_BITFR_ISSUE    = 5'd9,   // Step 5: BitFramingReg (tx last bits, StartSend=0)
+    S_BITFR_WAIT     = 5'd10,
     S_CMD_ISSUE      = 5'd11,  // Step 6: CommandReg = Transceive
     S_CMD_WAIT       = 5'd12,
-    S_START_ISSUE    = 5'd13,  // Step 7: StartSend
-    S_START_WAIT     = 5'd14,
-    S_POLL_ISSUE     = 5'd15,  // Step 8: Poll ComIrqReg
-    S_POLL_WAIT      = 5'd16,
-    S_IDLE_CMD_ISSUE = 5'd17,  // Step 9: CommandReg = Idle
-    S_IDLE_CMD_WAIT  = 5'd18,
-    S_RDLVL_ISSUE    = 5'd19,  // Step 10: Read FIFOLevelReg
-    S_RDLVL_WAIT     = 5'd20,
-    S_RDFIFO_ISSUE   = 5'd21,  // Step 11: Read FIFO data
-    S_RDFIFO_WAIT    = 5'd22,
-    S_RDCTRL_ISSUE   = 5'd23,  // Step 12: Read ControlReg
-    S_RDCTRL_WAIT    = 5'd24,
-    S_DONE           = 5'd25   // Step 13: Done
+    S_RDBITFR_ISSUE  = 5'd13,  // Step 7: READ BitFramingReg (read-modify-write)
+    S_RDBITFR_WAIT   = 5'd14,
+    S_START_ISSUE    = 5'd15,  // Step 8: WRITE BitFramingReg with StartSend OR'd in
+    S_START_WAIT     = 5'd16,
+    S_POLL_ISSUE     = 5'd17,  // Step 9: Poll ComIrqReg
+    S_POLL_WAIT      = 5'd18,
+    S_IDLE_CMD_ISSUE = 5'd19,  // Step 10: CommandReg = Idle
+    S_IDLE_CMD_WAIT  = 5'd20,
+    S_RDLVL_ISSUE    = 5'd21,  // Step 11: Read FIFOLevelReg
+    S_RDLVL_WAIT     = 5'd22,
+    S_RDFIFO_ISSUE   = 5'd23,  // Step 12: Read FIFO data
+    S_RDFIFO_WAIT    = 5'd24,
+    S_RDCTRL_ISSUE   = 5'd25,  // Step 13: Read ControlReg
+    S_RDCTRL_WAIT    = 5'd26,
+    S_DONE           = 5'd27   // Step 14: Done
   } state_t;
 
   (* MARK_DEBUG = "TRUE" *)state_t         state;
@@ -108,6 +111,7 @@ module mfrc_core (
   reg     [  4:0] fifo_level;
   reg             fifo_empty;
   reg             lat_timeout;
+  reg     [  7:0] lat_bitfr_val;  // latched BitFramingReg value from read
 
 
   assign trx_ready = (state == S_IDLE);
@@ -130,6 +134,7 @@ module mfrc_core (
       lat_tx_data      <= 256'd0;
       lat_tx_last_bits <= 3'd0;
       lat_timeout      <= 1'b0;
+      lat_bitfr_val    <= 8'd0;
     end else begin
       reg_req_valid <= 1'b0;
       trx_done      <= 1'b0;
@@ -145,6 +150,7 @@ module mfrc_core (
             lat_tx_last_bits <= trx_tx_last_bits;
             fifo_level       <= 5'd0;
             lat_timeout      <= 1'b0;
+            lat_bitfr_val    <= 8'd0;
             state            <= S_STOP_ISSUE;
           end
         end
@@ -186,22 +192,9 @@ module mfrc_core (
             state         <= S_FLUSH_WAIT;
           end
         end
-        S_FLUSH_WAIT: if (reg_resp_valid) state <= S_BITFR_ISSUE;
+        S_FLUSH_WAIT: if (reg_resp_valid) state <= S_FIFOWR_ISSUE;
 
-        // ── Step 4: BitFramingReg (tx last bits, StartSend=0) ──
-        S_BITFR_ISSUE: begin
-          if (reg_req_ready) begin
-            reg_req_valid <= 1'b1;
-            reg_req_write <= 1'b1;
-            reg_req_addr  <= REG_BIT_FRAMING;
-            reg_req_len   <= 5'd0;
-            reg_req_wdata <= {{5'b0, lat_tx_last_bits}, 248'd0};
-            state         <= S_BITFR_WAIT;
-          end
-        end
-        S_BITFR_WAIT: if (reg_resp_valid) state <= S_FIFOWR_ISSUE;
-
-        // ── Step 5: Write TX data to FIFO ──
+        // ── Step 4: Write TX data to FIFO (BEFORE BitFramingReg, matches Arduino) ──
         S_FIFOWR_ISSUE: begin
           if (reg_req_ready) begin
             reg_req_valid <= 1'b1;
@@ -212,7 +205,20 @@ module mfrc_core (
             state         <= S_FIFOWR_WAIT;
           end
         end
-        S_FIFOWR_WAIT: if (reg_resp_valid) state <= S_CMD_ISSUE;
+        S_FIFOWR_WAIT: if (reg_resp_valid) state <= S_BITFR_ISSUE;
+
+        // ── Step 5: BitFramingReg (tx last bits, StartSend=0) ──
+        S_BITFR_ISSUE: begin
+          if (reg_req_ready) begin
+            reg_req_valid <= 1'b1;
+            reg_req_write <= 1'b1;
+            reg_req_addr  <= REG_BIT_FRAMING;
+            reg_req_len   <= 5'd0;
+            reg_req_wdata <= {{5'b0, lat_tx_last_bits}, 248'd0};
+            state         <= S_BITFR_WAIT;
+          end
+        end
+        S_BITFR_WAIT: if (reg_resp_valid) state <= S_CMD_ISSUE;
 
         // ── Step 6: CommandReg = Transceive ──
         S_CMD_ISSUE: begin
@@ -225,22 +231,40 @@ module mfrc_core (
             state         <= S_CMD_WAIT;
           end
         end
-        S_CMD_WAIT: if (reg_resp_valid) state <= S_START_ISSUE;
+        S_CMD_WAIT: if (reg_resp_valid) state <= S_RDBITFR_ISSUE;
 
-        // ── Step 7: BitFramingReg with StartSend=1 ──
+        // ── Step 7: READ BitFramingReg (read-modify-write, matches Arduino) ──
+        S_RDBITFR_ISSUE: begin
+          if (reg_req_ready) begin
+            reg_req_valid <= 1'b1;
+            reg_req_write <= 1'b0;  // READ
+            reg_req_addr  <= REG_BIT_FRAMING;
+            reg_req_len   <= 5'd0;
+            reg_req_wdata <= 256'd0;
+            state         <= S_RDBITFR_WAIT;
+          end
+        end
+        S_RDBITFR_WAIT: begin
+          if (reg_resp_valid) begin
+            lat_bitfr_val <= reg_resp_rdata[255:248];  // latch current value
+            state         <= S_START_ISSUE;
+          end
+        end
+
+        // ── Step 8: WRITE BitFramingReg with StartSend OR'd in (read-modify-write) ──
         S_START_ISSUE: begin
           if (reg_req_ready) begin
             reg_req_valid <= 1'b1;
             reg_req_write <= 1'b1;
             reg_req_addr  <= REG_BIT_FRAMING;
             reg_req_len   <= 5'd0;
-            reg_req_wdata <= {{1'b1, 4'b0, lat_tx_last_bits}, 248'd0};
+            reg_req_wdata <= {(lat_bitfr_val | 8'h80), 248'd0};  // OR in StartSend bit
             state         <= S_START_WAIT;
           end
         end
         S_START_WAIT: if (reg_resp_valid) state <= S_POLL_ISSUE;
 
-        // ── Step 8: Poll ComIrqReg for RxIRq, IdleIRq, or TimerIRq ──
+        // ── Step 9: Poll ComIrqReg for RxIRq, IdleIRq, or TimerIRq ──
         S_POLL_ISSUE: begin
           if (reg_req_ready) begin
             reg_req_valid <= 1'b1;
@@ -267,7 +291,7 @@ module mfrc_core (
           end
         end
 
-        // ── Step 9: CommandReg = Idle ──
+        // ── Step 10: CommandReg = Idle ──
         S_IDLE_CMD_ISSUE: begin
           if (reg_req_ready) begin
             reg_req_valid <= 1'b1;
@@ -280,7 +304,7 @@ module mfrc_core (
         end
         S_IDLE_CMD_WAIT: if (reg_resp_valid) state <= S_RDLVL_ISSUE;
 
-        // ── Step 10: Read FIFOLevelReg ──
+        // ── Step 11: Read FIFOLevelReg ──
         S_RDLVL_ISSUE: begin
           if (reg_req_ready) begin
             reg_req_valid <= 1'b1;
@@ -306,7 +330,7 @@ module mfrc_core (
           end
         end
 
-        // ── Step 11: Read FIFO data ──
+        // ── Step 12: Read FIFO data ──
         S_RDFIFO_ISSUE: begin
           // Skip read if FIFO is empty or timeout occurred
           if (lat_timeout || fifo_empty) begin
@@ -331,7 +355,7 @@ module mfrc_core (
           end
         end
 
-        // ── Step 12: Read ControlReg (rx last bits) ──
+        // ── Step 13: Read ControlReg (rx last bits) ──
         S_RDCTRL_ISSUE: begin
           if (reg_req_ready) begin
             reg_req_valid <= 1'b1;
@@ -349,7 +373,7 @@ module mfrc_core (
           end
         end
 
-        // ── Step 13: Signal done ──
+        // ── Step 14: Signal done ──
         S_DONE: begin
           trx_done    <= 1'b1;
           trx_timeout <= lat_timeout;
