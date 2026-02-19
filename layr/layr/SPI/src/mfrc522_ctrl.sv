@@ -86,6 +86,10 @@ module mfrc522_ctrl (
   reg [7:0] anti_bcc;
   reg [31:0] wait_counter;
 
+  reg trx_err_probe_only;
+  (* MARK_DEBUG = "TRUE" *) reg [7:0] dbg_last_com_irq;
+  (* MARK_DEBUG = "TRUE" *) reg [7:0] dbg_last_error_reg;
+
   reg [1:0] trx_begin_step;
   reg [1:0] crc_begin_step;
 
@@ -358,6 +362,10 @@ module mfrc522_ctrl (
       tx_control_cache <= 8'd0;
       anti_bcc <= 8'd0;
       wait_counter <= 32'd0;
+
+      trx_err_probe_only <= 1'b0;
+      dbg_last_com_irq <= 8'd0;
+      dbg_last_error_reg <= 8'd0;
 
       trx_begin_step <= 2'd0;
       crc_begin_step <= 2'd0;
@@ -642,7 +650,12 @@ module mfrc522_ctrl (
         S_TRX_IRQ_RD_WAIT: begin
           if (spi_done) begin
             rd_value <= get_byte(spi_rx_data, 6'd0);
+            dbg_last_com_irq <= get_byte(spi_rx_data, 6'd0);
             if (get_byte(spi_rx_data, 6'd0) & 8'h30) begin
+              trx_err_probe_only <= 1'b0;
+              state <= S_TRX_ERR_RD;
+            end else if (get_byte(spi_rx_data, 6'd0) & 8'h04) begin
+              trx_err_probe_only <= 1'b1;
               state <= S_TRX_ERR_RD;
             end else if (get_byte(spi_rx_data, 6'd0) & 8'h01) begin
               state <= S_TRX_FAIL;
@@ -667,8 +680,16 @@ module mfrc522_ctrl (
 
         S_TRX_ERR_RD_WAIT: begin
           if (spi_done) begin
+            dbg_last_error_reg <= get_byte(spi_rx_data, 6'd0);
             if (get_byte(spi_rx_data, 6'd0) & 8'h13) begin
               state <= S_TRX_FAIL;
+            end else if (trx_err_probe_only) begin
+              if (trx_poll_count >= MAX_POLL_COUNT) begin
+                state <= S_TRX_FAIL;
+              end else begin
+                trx_poll_count <= trx_poll_count + 1'b1;
+                state <= S_TRX_IRQ_RD;
+              end
             end else begin
               state <= S_TRX_FLEVEL_RD;
             end
