@@ -52,6 +52,35 @@ module spi_top (
   wire m_spi_done;
   wire m_spi_busy;
 
+  mfrc522_ctrl u_mfrc522_ctrl (
+      .clk(clk),
+      .rst(rst),
+
+      .ready(mfrc_ready),
+      .init_done(mfrc_init_done),
+      .card_present(mfrc_card_present),
+      .atqa(mfrc_atqa),
+
+      .tx_valid(mfrc_tx_valid),
+      .tx_ready(mfrc_tx_ready),
+      .tx_len(mfrc_tx_len),
+      .tx_data(mfrc_tx_data),
+      .tx_last_bits(mfrc_tx_last_bits),
+
+      .rx_valid(mfrc_rx_valid),
+      .rx_len(mfrc_rx_len),
+      .rx_data(mfrc_rx_data),
+      .rx_last_bits(mfrc_rx_last_bits),
+
+      .spi_start(m_spi_go),
+      .spi_done(m_spi_done),
+      .spi_busy(m_spi_busy),
+      .spi_tx_data(m_spi_tx_data),
+      .spi_rx_data(m_spi_rx_data),
+      .spi_w_len(m_spi_w_len),
+      .spi_r_len(m_spi_r_len)
+  );
+
   eeprom_ctrl u_eeprom_ctrl (
       .clk(clk),
       .rst(rst),
@@ -70,39 +99,6 @@ module spi_top (
       .spi_rx_data(e_spi_rx_data),
       .spi_w_len(e_spi_w_len),
       .spi_r_len(e_spi_r_len)
-  );
-
-  mfrc_top u_mfrc_top (
-      .clk(clk),
-      .rst(rst),
-
-      // status outputs
-      .ready(mfrc_ready),
-      .init_done(mfrc_init_done),
-      .card_present(mfrc_card_present),
-      .atqa(mfrc_atqa),
-
-      // TX interface
-      .tx_valid(mfrc_tx_valid),
-      .tx_ready(mfrc_tx_ready),
-      .tx_len(mfrc_tx_len),
-      .tx_data(mfrc_tx_data),
-      .tx_last_bits(mfrc_tx_last_bits),
-
-      // RX interface
-      .rx_valid(mfrc_rx_valid),
-      .rx_len(mfrc_rx_len),
-      .rx_data(mfrc_rx_data),
-      .rx_last_bits(mfrc_rx_last_bits),
-
-      // connection to spi_arb (Client B)
-      .spi_go(m_spi_go),
-      .spi_done(m_spi_done),
-      .spi_busy(m_spi_busy),
-      .spi_tx_data(m_spi_tx_data),
-      .spi_rx_data(m_spi_rx_data),
-      .spi_w_len(m_spi_w_len),
-      .spi_r_len(m_spi_r_len)
   );
 
   spi_arb u_spi_arb (
