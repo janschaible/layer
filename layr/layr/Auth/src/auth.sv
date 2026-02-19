@@ -51,7 +51,7 @@ module auth(
     output logic eeprom_get_key
 );
 
-enum {
+(* MARK_DEBUG = "TRUE" *) enum {
     GET_KEY,
     WAIT_FOR_KEY,
     IDLE,

@@ -31,7 +31,7 @@ logic auth_valid;
 logic [127:0] auth_data_in;
 logic [127:0] auth_data_out;
 
-enum {READY, RUNNING, DONE} state, next_state;
+(* MARK_DEBUG = "TRUE" *) enum {READY, RUNNING, DONE} state, next_state;
 
 always_comb begin
     next_state = state;

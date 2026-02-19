@@ -28,7 +28,7 @@ module layr_controller(
     output logic status_valid
 );
 
-enum {READY, SELECT_PROG, AUTH_INIT, GENERATE_CHALLENGE, AUTH, GET_ID, VERIFY_ID, REQUEST_VALIDATED, REQUEST_DENIED} state, next_state;
+(* MARK_DEBUG = "TRUE" *) enum {READY, SELECT_PROG, AUTH_INIT, GENERATE_CHALLENGE, AUTH, GET_ID, VERIFY_ID, REQUEST_VALIDATED, REQUEST_DENIED} state, next_state;
 
 // Driving the state
 always_comb begin

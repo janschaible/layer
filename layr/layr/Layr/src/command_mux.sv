@@ -19,8 +19,8 @@ module command_mux(
     input logic [127: 0] chip_challenge,
 
     // mfrc TX interface (to card)
-    output logic         mfrc_tx_valid,
-    input  logic         mfrc_tx_ready,
+    (* MARK_DEBUG = "TRUE" *) output logic         mfrc_tx_valid,
+    (* MARK_DEBUG = "TRUE" *) input  logic         mfrc_tx_ready,
     output logic [  4:0] mfrc_tx_len,
     output logic [255:0] mfrc_tx_data,
     output logic [  2:0] mfrc_tx_last_bits,
@@ -42,7 +42,7 @@ module command_mux(
 parameter CLA = 8'h80;
 
 enum {SELECT_PROG, AUTH_INIT, AUTH, GET_ID} active_transmission, next_active_transmission;
-enum {READY, SEND, WAIT_RX} state, next_state;
+(* MARK_DEBUG = "TRUE" *) enum {READY, SEND, WAIT_RX} state, next_state;
 
 
 function logic [167:0] cmd;

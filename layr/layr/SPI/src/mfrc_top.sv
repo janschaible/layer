@@ -247,7 +247,7 @@ module mfrc_top (
     // Card fully activated
     S_CARD_READY     = 7'd76;
 
-  (* MARK_DEBUG = "TRUE" *) reg [6:0] state;
+  reg [6:0] state;
 
   // ===================================================================
   // Transceive working registers
