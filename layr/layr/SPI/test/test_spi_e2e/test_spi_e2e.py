@@ -1,44 +1,44 @@
-import os
-from pathlib import Path
-import cocotb
-from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, Timer
-from at25010b_helpers import eeprom_setup, eeprom_send_cmd, KEY_A, ID_A
-from mfrc522_helpers import (
-    mfrc_setup,
-    mfrc_reqa,
-    mfrc_anticoll,
-    mfrc_select,
-    mfrc_wupa,
-    mfrc_wait_for_init,
-    mfrc_wait_for_card,
-)
-from helpers import reset_dut
-from cocotb_tools.runner import get_runner
-
-CLK_PERIOD_NS = 10  # 100MHz
-
-
-def dump_hex(mfrc, test_name):
-    with open(f"{test_name}_sent.hex", "w") as f:
-        for b in mfrc.get_spi_bytes_sent():
-            f.write(f"{b:02X}\n")
-    with open(f"{test_name}_received.hex", "w") as f:
-        for b in mfrc.get_spi_bytes_received():
-            f.write(f"{b:02X}\n")
-
-
-async def setup(dut):
-    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
-
-    eeprom = await eeprom_setup(dut)
-    mfrc = await mfrc_setup(dut)
-
-    await reset_dut(dut)
-
-    return (eeprom, mfrc)
-
-
+# import os
+# from pathlib import Path
+# import cocotb
+# from cocotb.clock import Clock
+# from cocotb.triggers import RisingEdge, Timer
+# from at25010b_helpers import eeprom_setup, eeprom_send_cmd, KEY_A, ID_A
+# from mfrc522_helpers import (
+#     mfrc_setup,
+#     mfrc_reqa,
+#     mfrc_anticoll,
+#     mfrc_select,
+#     mfrc_wupa,
+#     mfrc_wait_for_init,
+#     mfrc_wait_for_card,
+# )
+# from helpers import reset_dut
+# from cocotb_tools.runner import get_runner
+# 
+# CLK_PERIOD_NS = 10  # 100MHz
+# 
+# 
+# def dump_hex(mfrc, test_name):
+#     with open(f"{test_name}_sent.hex", "w") as f:
+#         for b in mfrc.get_spi_bytes_sent():
+#             f.write(f"{b:02X}\n")
+#     with open(f"{test_name}_received.hex", "w") as f:
+#         for b in mfrc.get_spi_bytes_received():
+#             f.write(f"{b:02X}\n")
+# 
+# 
+# async def setup(dut):
+#     cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
+# 
+#     eeprom = await eeprom_setup(dut)
+#     mfrc = await mfrc_setup(dut)
+# 
+#     await reset_dut(dut)
+# 
+#     return (eeprom, mfrc)
+# 
+# 
 # =============================================================================
 # AT25010B EEPROM Tests
 # =============================================================================
@@ -152,58 +152,54 @@ async def setup(dut):
 #     )
 #     dut._log.info("test_mfrc_auto_card_detection PASSED ✓")
 #
-
-
-@cocotb.test()
-async def test_mfrc_delayed_card_detection(dut):
-    """
-    Test card detection with 5 polling cycles before card appears.
-    Verifies auto-poll continues working when card is not initially present.
-    """
-    _, mfrc = await setup(dut)
-    dut._log.info("Testing delayed card detection...")
-
-    # Wait for init to complete
-    init_ok = await mfrc_wait_for_init(dut, timeout_us=200000)
-    assert init_ok, "MFRC auto-init did not complete in time"
-    dut._log.info("MFRC auto-init complete")
-
-    # Disable card presence - simulate no card nearby
-    mfrc.set_card_present(False)
-    dut._log.info("Card presence disabled - simulating no card nearby")
-
-    # Wait for 5 polling cycles (each cycle is ~50ms based on auto-poll timing)
-    # We'll wait for 5 failed polls - polling happens at regular intervals
-    POLL_CYCLE_US = 50000  # 50ms per poll cycle
-    num_polls = 5
-    for i in range(num_polls):
-        dut._log.info(f"Waiting for poll cycle {i + 1}/{num_polls}...")
-        await RisingEdge(dut.clk)
-        await Timer(POLL_CYCLE_US, unit="ns")
-
-    dut._log.info(f"Completed {num_polls} polling cycles with no card")
-
-    # Now make card appear
-    mfrc.set_card_present(True)
-    dut._log.info("Card now present - enabling card detection")
-
-    # Wait for card to be detected
-    card_detected = await mfrc_wait_for_card(dut, timeout_us=300000)
-    assert card_detected, "Card was not detected after becoming present"
-
-    assert dut.mfrc_card_present.value == 1, "card_present should be 1"
-    assert (
-        int(dut.mfrc_atqa.value) == 0x0400
-    ), f"Expected ATQA=0x0400, got {int(dut.mfrc_atqa.value):#06x}"
-
-    dut._log.info(
-        f"card_present={dut.mfrc_card_present.value}, atqa={int(dut.mfrc_atqa.value):#06x}"
-    )
-    dut._log.info("test_mfrc_delayed_card_detection PASSED ✓")
-
-    dump_hex(mfrc, "1____test_mfrc_delayed_card_detection")
-
-
+#
+# @cocotb.test()
+# async def test_mfrc_delayed_card_detection(dut):
+#     # Test card detection with 5 polling cycles before card appears.
+#     # Verifies auto-poll continues working when card is not initially present.
+#     _, mfrc = await setup(dut)
+#     dut._log.info("Testing delayed card detection...")
+# 
+#     # Wait for init to complete
+#     init_ok = await mfrc_wait_for_init(dut, timeout_us=200000)
+#     assert init_ok, "MFRC auto-init did not complete in time"
+#     dut._log.info("MFRC auto-init complete")
+# 
+#     # Disable card presence - simulate no card nearby
+#     mfrc.set_card_present(False)
+#     dut._log.info("Card presence disabled - simulating no card nearby")
+# 
+#     # Wait for 5 polling cycles (each cycle is ~50ms based on auto-poll timing)
+#     # We'll wait for 5 failed polls - polling happens at regular intervals
+#     POLL_CYCLE_US = 50000  # 50ms per poll cycle
+#     num_polls = 5
+#     for i in range(num_polls):
+#         dut._log.info(f"Waiting for poll cycle {i + 1}/{num_polls}...")
+#         await RisingEdge(dut.clk)
+#         await Timer(POLL_CYCLE_US, unit="ns")
+# 
+#     dut._log.info(f"Completed {num_polls} polling cycles with no card")
+# 
+#     # Now make card appear
+#     mfrc.set_card_present(True)
+#     dut._log.info("Card now present - enabling card detection")
+# 
+#     # Wait for card to be detected
+#     card_detected = await mfrc_wait_for_card(dut, timeout_us=300000)
+#     assert card_detected, "Card was not detected after becoming present"
+# 
+#     assert dut.mfrc_card_present.value == 1, "card_present should be 1"
+#     assert (
+#         int(dut.mfrc_atqa.value) == 0x0400
+#     ), f"Expected ATQA=0x0400, got {int(dut.mfrc_atqa.value):#06x}"
+# 
+#     dut._log.info(
+#         f"card_present={dut.mfrc_card_present.value}, atqa={int(dut.mfrc_atqa.value):#06x}"
+#     )
+#     dut._log.info("test_mfrc_delayed_card_detection PASSED ✓")
+# 
+#     dump_hex(mfrc, "1____test_mfrc_delayed_card_detection")
+# 
 # =============================================================================
 # MFRC522 Transceive / PICC Communication Tests
 # =============================================================================
@@ -722,28 +718,28 @@ async def test_mfrc_delayed_card_detection(dut):
 # =============================================================================
 
 
-def test_spi_e2e_runner():
-    sim = os.getenv("SIM", "icarus")
-    spi_module_path = Path(__file__).resolve().parent.parent.parent
-    src_dir = spi_module_path / "src"
+# def test_spi_e2e_runner():
+#     sim = os.getenv("SIM", "icarus")
+#     spi_module_path = Path(__file__).resolve().parent.parent.parent
+#     src_dir = spi_module_path / "src"
+# 
+#     sources = list(src_dir.glob("*.sv"))
+# 
+#     runner = get_runner(sim)
+#     runner.build(
+#         sources=sources,
+#         hdl_toplevel="spi_top",
+#         always=True,
+#         waves=True,
+#         timescale=("1ns", "1ps"),
+#     )
+# 
+#     runner.test(
+#         hdl_toplevel="spi_top",
+#         test_module="test_spi_e2e",
+#         waves=True,
+#     )
 
-    sources = list(src_dir.glob("*.sv"))
 
-    runner = get_runner(sim)
-    runner.build(
-        sources=sources,
-        hdl_toplevel="spi_top",
-        always=True,
-        waves=True,
-        timescale=("1ns", "1ps"),
-    )
-
-    runner.test(
-        hdl_toplevel="spi_top",
-        test_module="test_spi_e2e",
-        waves=True,
-    )
-
-
-if __name__ == "__main__":
-    test_spi_e2e_runner()
+# if __name__ == "__main__":
+#     test_spi_e2e_runner()

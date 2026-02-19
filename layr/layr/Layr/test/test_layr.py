@@ -286,9 +286,9 @@ def test_layr_controller_runner():
     auth_sources = auth / "src"
     aes = auth / "secworks-aes" / "src" / "rtl"
 
-    sources = [p for p in root.rglob("*") if p.is_file()]
-    sources += [p for p in auth_sources.rglob("*") if p.is_file()]
-    sources += [p for p in aes.rglob("*") if p.is_file()]
+    sources = [p for p in root.rglob("*.sv") if p.is_file()]
+    sources += [p for p in auth_sources.rglob("*.sv") if p.is_file()]
+    sources += [p for p in aes.rglob("*.v") if p.is_file()]
 
     runner = get_runner(sim)
     runner.build(
