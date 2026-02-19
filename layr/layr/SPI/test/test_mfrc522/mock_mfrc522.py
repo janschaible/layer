@@ -122,6 +122,7 @@ class Mfrc522SpiSlave(SpiSlaveBase):
 
         # Card UID for PICC emulation
         self._uid = bytes((0xDE, 0xAD, 0xBE, 0xEF))
+        self._atqa = bytes((0x08, 0x00))
         self._version = 0x92  # MFRC522 v2.0
 
         # Test injection hooks
@@ -147,6 +148,14 @@ class Mfrc522SpiSlave(SpiSlaveBase):
         # Timer state
         self._timer_running: bool = False
         self._timer_reload: int = 0x0000
+
+        # Transceive polling model (number of ComIrq polls returning 0x44)
+        self._response_poll_reads: int = 1
+        self._timeout_poll_reads: int = 6
+        self._pending_transceive_kind: Optional[str] = None
+        self._pending_transceive_polls: int = 0
+        self._pending_resp: bytes = b""
+        self._pending_rx_last_bits: int = 0
 
         self._reset_regs()
 
@@ -192,6 +201,19 @@ class Mfrc522SpiSlave(SpiSlaveBase):
     def set_uid(self, uid: bytes) -> None:
         """Set the card UID for PICC emulation."""
         self._uid = uid[:4] if len(uid) >= 4 else uid + b"\x00" * (4 - len(uid))
+
+    def set_atqa(self, atqa: bytes) -> None:
+        """Set ATQA response (2 bytes)."""
+        if len(atqa) != 2:
+            raise ValueError("ATQA must be exactly 2 bytes")
+        self._atqa = bytes(atqa)
+
+    def set_transceive_poll_cadence(
+        self, response_poll_reads: int, timeout_poll_reads: int
+    ) -> None:
+        """Tune ComIrq polling cadence before terminal IRQ appears."""
+        self._response_poll_reads = max(0, int(response_poll_reads))
+        self._timeout_poll_reads = max(0, int(timeout_poll_reads))
 
     def set_card_present(self, present: bool) -> None:
         """Control card visibility for PICC emulation."""
@@ -261,6 +283,10 @@ class Mfrc522SpiSlave(SpiSlaveBase):
         self._antenna_on = False
         self._transceive_pending = False
         self._timer_running = False
+        self._pending_transceive_kind = None
+        self._pending_transceive_polls = 0
+        self._pending_resp = b""
+        self._pending_rx_last_bits = 0
 
         # Initialize alert edge trackers
         hialert, loalert = self._compute_alerts()
@@ -357,6 +383,7 @@ class Mfrc522SpiSlave(SpiSlaveBase):
             return self._regs[addr] & 0x0F
 
         if addr == self.REG_COM_IRQ:
+            self._advance_transceive_irq_state_on_poll()
             return self._regs[addr] & 0x7F
 
         if addr == self.REG_DIV_IRQ:
@@ -380,6 +407,34 @@ class Mfrc522SpiSlave(SpiSlaveBase):
             return self._regs[addr] & 0x3F
 
         return self._regs[addr] & 0xFF
+
+    def _advance_transceive_irq_state_on_poll(self) -> None:
+        """Advance delayed transceive completion each ComIrq read."""
+        if self._pending_transceive_kind is None:
+            return
+
+        if self._pending_transceive_polls > 0:
+            self._pending_transceive_polls -= 1
+            return
+
+        if self._pending_transceive_kind == "response":
+            for b in self._pending_resp:
+                self._fifo_push(b)
+
+            self._regs[self.REG_CONTROL] = (self._regs[self.REG_CONTROL] & 0xF8) | (
+                self._pending_rx_last_bits & 0x07
+            )
+            self._regs[self.REG_COM_IRQ] |= self.COMIRQ_RX
+            cocotb.log.info(
+                f"MFRC522: RX [{len(self._pending_resp)} bytes]: {self._pending_resp.hex()}"
+            )
+        else:
+            self._set_timeout()
+
+        self._pending_transceive_kind = None
+        self._pending_resp = b""
+        self._pending_rx_last_bits = 0
+        self._update_alerts_and_irq()
 
     def _unread_reg(self, addr: int, value: int) -> None:
         """Undo destructive read for FIFO."""
@@ -539,6 +594,10 @@ class Mfrc522SpiSlave(SpiSlaveBase):
 
         if cmd == self.CMD_IDLE:
             self._transceive_pending = False
+            self._pending_transceive_kind = None
+            self._pending_transceive_polls = 0
+            self._pending_resp = b""
+            self._pending_rx_last_bits = 0
             # IdleIRq is set when returning to idle
             self._regs[self.REG_COM_IRQ] |= self.COMIRQ_IDLE
             self._update_status1_irq()
@@ -584,6 +643,14 @@ class Mfrc522SpiSlave(SpiSlaveBase):
             f"MFRC522: TX [{len(req)} bytes, {tx_last_bits} last bits]: {req.hex() if req else '(empty)'}"
         )
 
+        # Real traces commonly show ComIrq in a "TX complete / waiting" state
+        # for several polls before either RX or TIMER is asserted.
+        self._regs[self.REG_COM_IRQ] &= ~(
+            self.COMIRQ_RX | self.COMIRQ_IDLE | self.COMIRQ_TIMER | self.COMIRQ_ERR
+        )
+        self._regs[self.REG_COM_IRQ] |= self.COMIRQ_TX | self.COMIRQ_LOALERT
+        self._update_status1_irq()
+
         # Process command and generate response
         resp, rx_last_bits = self._process_picc_command(req, tx_last_bits)
 
@@ -591,22 +658,15 @@ class Mfrc522SpiSlave(SpiSlaveBase):
         self._regs[self.REG_BIT_FRAMING] &= ~0x80
 
         if resp:
-            # Load response into FIFO
-            for b in resp:
-                self._fifo_push(b)
-
-            # Update ControlReg RxLastBits
-            self._regs[self.REG_CONTROL] = (self._regs[self.REG_CONTROL] & 0xF8) | (
-                rx_last_bits & 0x07
-            )
-
-            # Set completion IRQs
-            self._regs[self.REG_COM_IRQ] |= self.COMIRQ_RX | self.COMIRQ_IDLE
-
-            cocotb.log.info(f"MFRC522: RX [{len(resp)} bytes]: {resp.hex()}")
+            self._pending_transceive_kind = "response"
+            self._pending_transceive_polls = self._response_poll_reads
+            self._pending_resp = bytes(resp)
+            self._pending_rx_last_bits = rx_last_bits
         else:
-            # No response - timeout
-            self._set_timeout()
+            self._pending_transceive_kind = "timeout"
+            self._pending_transceive_polls = self._timeout_poll_reads
+            self._pending_resp = b""
+            self._pending_rx_last_bits = 0
 
         # Apply injected errors
         if self._inject_error:
@@ -639,8 +699,7 @@ class Mfrc522SpiSlave(SpiSlaveBase):
                     return b"", 0
                 cmd_name = "REQA" if req_stripped[0] == 0x26 else "WUPA"
                 cocotb.log.debug(f"MFRC522: {cmd_name} received")
-                # ATQA for MIFARE Classic 1K: 0x04 0x00
-                return b"\x04\x00", 0
+                return self._atqa, 0
 
         # ANTICOLL CL1
         if req_stripped == b"\x93\x20":
@@ -679,7 +738,8 @@ class Mfrc522SpiSlave(SpiSlaveBase):
 
     def _set_timeout(self) -> None:
         """Set timeout condition (TimerIRq)."""
-        self._regs[self.REG_COM_IRQ] |= self.COMIRQ_TIMER | self.COMIRQ_IDLE
+        self._regs[self.REG_COM_IRQ] |= self.COMIRQ_TIMER
+        self._regs[self.REG_COM_IRQ] &= ~self.COMIRQ_IDLE
         self._regs[self.REG_BIT_FRAMING] &= ~0x80
         self._update_alerts_and_irq()
 
@@ -688,7 +748,7 @@ class Mfrc522SpiSlave(SpiSlaveBase):
         # Clear CRCReady during calculation
         self._regs[self.REG_STATUS1] &= ~(self.STATUS1_CRCREADY | self.STATUS1_CRCOK)
 
-        await Timer(50, units="ns")
+        await Timer(50, unit="ns")
 
         # Calculate CRC over FIFO contents
         data = bytes(self._fifo)

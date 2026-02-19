@@ -193,7 +193,7 @@ async def test_mfrc_delayed_card_detection(dut):
 
     assert dut.mfrc_card_present.value == 1, "card_present should be 1"
     assert (
-        int(dut.mfrc_atqa.value) == 0x0400
+        int(dut.mfrc_atqa.value) == 0x0800
     ), f"Expected ATQA=0x0400, got {int(dut.mfrc_atqa.value):#06x}"
 
     dut._log.info(
