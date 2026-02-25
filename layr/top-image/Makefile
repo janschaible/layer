@@ -2,7 +2,7 @@ export IMAGE_PATH=qr.png
 export CELLNAME=rickroll
 export GDS_PATH=gds/rickroll.gds
 
-export PDK_ROOT=../pdk
+export PDK_ROOT=../../../../../pdk
 export PDK=ihp-sg13g2
 
 export CHIP_GDS=../layr/Chip/runs/top-run/final/gds/top.gds

@@ -2,7 +2,7 @@ WORK_DIR=$(shell pwd)
 TOP=top
 TAG=top-run
 
-PDK_ROOT ?= $(WORK_DIR)/../../pdk
+PDK_ROOT ?= $(WORK_DIR)/../../../../../../pdk
 PDK = ihp-sg13g2
 
 .PHONY: librelane

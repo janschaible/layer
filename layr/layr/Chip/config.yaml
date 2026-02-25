@@ -92,7 +92,7 @@ EXTRA_LEFS:
   - dir::bondpad/bondpad_70x70.lef
 
 PDK: ihp-sg13g2
-PDK_ROOT: "../../pdk"
+PDK_ROOT: "../../../../../../pdk"
 
 # Pinout based on user requirements:
 # Pin1: rst (input)
